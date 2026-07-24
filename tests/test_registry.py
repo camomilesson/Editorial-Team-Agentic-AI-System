@@ -10,6 +10,7 @@ from editorial_agent.models import (
     ToolCall,
     ToolResult,
 )
+from editorial_agent.publication import PublicationOutbox
 from editorial_agent.registry import (
     ToolOutputError,
     ToolRegistry,
@@ -34,17 +35,24 @@ def create_press_release(
     )
 
 
-def test_editorial_registry_contains_three_tools(
+def test_editorial_registry_contains_four_tools(
     tmp_path: Path,
 ) -> None:
+    store = ProjectStore(tmp_path / "workspace")
+    outbox = PublicationOutbox(
+        root=tmp_path / "published",
+        store=store,
+    )
     registry = create_editorial_registry(
-        ProjectStore(tmp_path)
+        store,
+        outbox,
     )
 
     assert registry.names == (
         "read_press_release",
         "save_linkedin_draft",
         "read_linkedin_draft",
+        "publish_linkedin_post",
     )
     assert registry.schemas == EDITORIAL_TOOL_SCHEMAS
 
@@ -52,13 +60,19 @@ def test_editorial_registry_contains_three_tools(
 def test_registry_executes_read_press_release(
     tmp_path: Path,
 ) -> None:
+    store = ProjectStore(tmp_path / "workspace")
+    outbox = PublicationOutbox(
+        root=tmp_path / "published",
+        store=store,
+    )
     create_press_release(
-        tmp_path,
+        store.root,
         "demo",
         "Public press release.",
     )
     registry = create_editorial_registry(
-        ProjectStore(tmp_path)
+        store,
+        outbox,
     )
 
     result = registry.execute(
@@ -83,8 +97,14 @@ def test_registry_executes_read_press_release(
 def test_registry_executes_save_linkedin_draft(
     tmp_path: Path,
 ) -> None:
+    store = ProjectStore(tmp_path / "workspace")
+    outbox = PublicationOutbox(
+        root=tmp_path / "published",
+        store=store,
+    )
     registry = create_editorial_registry(
-        ProjectStore(tmp_path)
+        store,
+        outbox,
     )
 
     result = registry.execute(
@@ -104,6 +124,7 @@ def test_registry_executes_save_linkedin_draft(
 
     saved_path = (
         tmp_path
+        / "workspace"
         / "demo"
         / "linkedin"
         / "001-first_draft.md"
@@ -117,8 +138,15 @@ def test_registry_executes_save_linkedin_draft(
 def test_registry_executes_read_linkedin_draft(
     tmp_path: Path,
 ) -> None:
-    store = ProjectStore(tmp_path)
-    registry = create_editorial_registry(store)
+    store = ProjectStore(tmp_path / "workspace")
+    outbox = PublicationOutbox(
+        root=tmp_path / "published",
+        store=store,
+    )
+    registry = create_editorial_registry(
+        store,
+        outbox,
+    )
 
     store.save_linkedin_draft(
         project_id="demo",
@@ -151,8 +179,14 @@ def test_registry_executes_read_linkedin_draft(
 def test_unknown_tool_returns_structured_error(
     tmp_path: Path,
 ) -> None:
+    store = ProjectStore(tmp_path / "workspace")
+    outbox = PublicationOutbox(
+        root=tmp_path / "published",
+        store=store,
+    )
     registry = create_editorial_registry(
-        ProjectStore(tmp_path)
+        store,
+        outbox,
     )
 
     result = registry.execute(
@@ -175,8 +209,14 @@ def test_unknown_tool_returns_structured_error(
 def test_missing_required_argument_is_rejected(
     tmp_path: Path,
 ) -> None:
+    store = ProjectStore(tmp_path / "workspace")
+    outbox = PublicationOutbox(
+        root=tmp_path / "published",
+        store=store,
+    )
     registry = create_editorial_registry(
-        ProjectStore(tmp_path)
+        store,
+        outbox,
     )
 
     result = registry.execute(
@@ -197,8 +237,14 @@ def test_missing_required_argument_is_rejected(
 def test_invalid_stage_is_rejected_before_execution(
     tmp_path: Path,
 ) -> None:
+    store = ProjectStore(tmp_path / "workspace")
+    outbox = PublicationOutbox(
+        root=tmp_path / "published",
+        store=store,
+    )
     registry = create_editorial_registry(
-        ProjectStore(tmp_path)
+        store,
+        outbox,
     )
 
     result = registry.execute(
@@ -218,7 +264,7 @@ def test_invalid_stage_is_rejected_before_execution(
         "invalid_tool_arguments"
     )
 
-    linkedin_dir = tmp_path / "demo" / "linkedin"
+    linkedin_dir = tmp_path / "workspace" / "demo" / "linkedin"
 
     assert not linkedin_dir.exists()
 
@@ -226,8 +272,14 @@ def test_invalid_stage_is_rejected_before_execution(
 def test_additional_argument_is_rejected(
     tmp_path: Path,
 ) -> None:
+    store = ProjectStore(tmp_path / "workspace")
+    outbox = PublicationOutbox(
+        root=tmp_path / "published",
+        store=store,
+    )
     registry = create_editorial_registry(
-        ProjectStore(tmp_path)
+        store,
+        outbox,
     )
 
     result = registry.execute(
@@ -250,8 +302,14 @@ def test_additional_argument_is_rejected(
 def test_invalid_version_is_rejected_by_schema(
     tmp_path: Path,
 ) -> None:
+    store = ProjectStore(tmp_path / "workspace")
+    outbox = PublicationOutbox(
+        root=tmp_path / "published",
+        store=store,
+    )
     registry = create_editorial_registry(
-        ProjectStore(tmp_path)
+        store,
+        outbox,
     )
 
     result = registry.execute(
@@ -307,15 +365,215 @@ def test_invalid_arguments_do_not_call_handler() -> None:
     assert handler_called is False
 
 
-def test_registered_tools_are_reversible_by_default(
+def test_only_publication_requires_approval(
     tmp_path: Path,
 ) -> None:
+    store = ProjectStore(tmp_path / "workspace")
+    outbox = PublicationOutbox(
+        root=tmp_path / "published",
+        store=store,
+    )
     registry = create_editorial_registry(
-        ProjectStore(tmp_path)
+        store,
+        outbox,
     )
 
-    for name in registry.names:
-        assert registry.requires_approval(name) is False
+    assert registry.requires_approval("read_press_release") is False
+    assert registry.requires_approval("save_linkedin_draft") is False
+    assert registry.requires_approval("read_linkedin_draft") is False
+    assert registry.requires_approval("publish_linkedin_post") is True
+
+
+def test_registry_publishes_final_linkedin_post(
+    tmp_path: Path,
+) -> None:
+    store = ProjectStore(tmp_path / "workspace")
+    outbox = PublicationOutbox(
+        root=tmp_path / "published",
+        store=store,
+    )
+    registry = create_editorial_registry(
+        store,
+        outbox,
+    )
+    content = "Exact final LinkedIn post."
+    draft = store.save_linkedin_draft(
+        project_id="demo",
+        content=content,
+        stage="final",
+    )
+
+    result = registry.execute(
+        ToolCall(
+            call_id="call-publish-1",
+            name="publish_linkedin_post",
+            arguments={
+                "project_id": "demo",
+                "version": draft.version,
+                "visibility": "public",
+            },
+        )
+    )
+
+    assert result == {
+        "ok": True,
+        "data": {
+            "project_id": "demo",
+            "version": 1,
+            "visibility": "public",
+            "content": content,
+        },
+    }
+    published_path = tmp_path / "published" / "demo" / "001-public.md"
+    assert published_path.exists()
+    assert published_path.resolve().is_relative_to(outbox.root)
+    assert published_path.read_text(encoding="utf-8") == content
+
+
+def test_registry_rejects_non_final_draft_for_publication(
+    tmp_path: Path,
+) -> None:
+    store = ProjectStore(tmp_path / "workspace")
+    outbox = PublicationOutbox(
+        root=tmp_path / "published",
+        store=store,
+    )
+    registry = create_editorial_registry(
+        store,
+        outbox,
+    )
+    draft = store.save_linkedin_draft(
+        project_id="demo",
+        content="Not final.",
+        stage="revision",
+    )
+
+    result = registry.execute(
+        ToolCall(
+            call_id="call-publish-1",
+            name="publish_linkedin_post",
+            arguments={
+                "project_id": "demo",
+                "version": draft.version,
+                "visibility": "public",
+            },
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["error"]["type"] == "draft_not_final"
+    assert not (tmp_path / "published").exists()
+
+
+def test_invalid_publication_visibility_is_rejected_by_schema(
+    tmp_path: Path,
+) -> None:
+    store = ProjectStore(tmp_path / "workspace")
+    outbox = PublicationOutbox(
+        root=tmp_path / "published",
+        store=store,
+    )
+    registry = create_editorial_registry(
+        store,
+        outbox,
+    )
+    draft = store.save_linkedin_draft(
+        project_id="demo",
+        content="Final post.",
+        stage="final",
+    )
+
+    result = registry.execute(
+        ToolCall(
+            call_id="call-publish-1",
+            name="publish_linkedin_post",
+            arguments={
+                "project_id": "demo",
+                "version": draft.version,
+                "visibility": "private",
+            },
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["error"]["type"] == "invalid_tool_arguments"
+    assert not (tmp_path / "published").exists()
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    (
+        {
+            "project_id": "demo",
+            "visibility": "public",
+        },
+        {
+            "project_id": "demo",
+            "version": 0,
+            "visibility": "public",
+        },
+    ),
+)
+def test_missing_or_non_positive_publication_version_is_rejected_by_schema(
+    tmp_path: Path,
+    arguments: dict[str, Any],
+) -> None:
+    store = ProjectStore(tmp_path / "workspace")
+    outbox = PublicationOutbox(
+        root=tmp_path / "published",
+        store=store,
+    )
+    registry = create_editorial_registry(
+        store,
+        outbox,
+    )
+
+    result = registry.execute(
+        ToolCall(
+            call_id="call-publish-1",
+            name="publish_linkedin_post",
+            arguments=arguments,
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["error"]["type"] == "invalid_tool_arguments"
+    assert not (tmp_path / "published").exists()
+
+
+def test_publishing_same_version_twice_returns_already_published(
+    tmp_path: Path,
+) -> None:
+    store = ProjectStore(tmp_path / "workspace")
+    outbox = PublicationOutbox(
+        root=tmp_path / "published",
+        store=store,
+    )
+    registry = create_editorial_registry(
+        store,
+        outbox,
+    )
+    draft = store.save_linkedin_draft(
+        project_id="demo",
+        content="Final post.",
+        stage="final",
+    )
+    tool_call = ToolCall(
+        call_id="call-publish-1",
+        name="publish_linkedin_post",
+        arguments={
+            "project_id": "demo",
+            "version": draft.version,
+            "visibility": "public",
+        },
+    )
+
+    first_result = registry.execute(tool_call)
+    second_result = registry.execute(tool_call)
+
+    assert first_result["ok"] is True
+    assert second_result["ok"] is False
+    assert second_result["error"]["type"] == "already_published"
 
 
 def test_duplicate_tool_names_are_rejected() -> None:
@@ -525,14 +783,20 @@ def test_handler_exception_reaches_agent_tool_error_branch() -> None:
 def test_registry_plugs_into_agent_runner(
     tmp_path: Path,
 ) -> None:
+    store = ProjectStore(tmp_path / "workspace")
+    outbox = PublicationOutbox(
+        root=tmp_path / "published",
+        store=store,
+    )
     create_press_release(
-        tmp_path,
+        store.root,
         "demo",
         "A public press release.",
     )
 
     registry = create_editorial_registry(
-        ProjectStore(tmp_path)
+        store,
+        outbox,
     )
 
     model = FakeModelClient(

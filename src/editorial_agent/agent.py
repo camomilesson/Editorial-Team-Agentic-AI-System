@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Protocol
 
+from editorial_agent.approval import ApprovalGate
 from editorial_agent.models import (
     ModelClient,
     ModelClientError,
@@ -44,10 +45,14 @@ class AgentResult:
 
 
 class ToolExecutor(Protocol):
-    """Executes normalized model tool calls."""
+    """Validate and execute normalized model tool calls."""
 
     def execute(self, tool_call: ToolCall) -> Any:
         """Execute one tool call and return its result."""
+        ...
+
+    def requires_approval(self, tool_name: str) -> bool:
+        """Return whether a tool requires explicit human approval."""
         ...
 
 
@@ -59,6 +64,7 @@ class AgentRunner:
         *,
         model: ModelClient,
         executor: ToolExecutor,
+        approval_gate: ApprovalGate | None = None,
         max_steps: int = 8,
     ) -> None:
         if max_steps < 1:
@@ -66,6 +72,7 @@ class AgentRunner:
 
         self._model = model
         self._executor = executor
+        self._approval_gate = approval_gate
         self._max_steps = max_steps
 
     def run(
@@ -98,12 +105,10 @@ class AgentRunner:
                         },
                     )
                 )
-                trace.append(
-                    TraceEvent(
-                        step=step,
-                        kind="run_stopped",
-                        payload={"reason": StopReason.MODEL_ERROR},
-                    )
+                self._record_stop(
+                    trace=trace,
+                    step=step,
+                    reason=StopReason.MODEL_ERROR,
                 )
 
                 return AgentResult(
@@ -125,13 +130,12 @@ class AgentRunner:
             )
 
             if not response.tool_calls:
-                trace.append(
-                    TraceEvent(
-                        step=step,
-                        kind="run_stopped",
-                        payload={"reason": StopReason.ANSWERED},
-                    )
+                self._record_stop(
+                    trace=trace,
+                    step=step,
+                    reason=StopReason.ANSWERED,
                 )
+
                 return AgentResult(
                     text=response.text,
                     stop_reason=StopReason.ANSWERED,
@@ -153,6 +157,28 @@ class AgentRunner:
                         },
                     )
                 )
+
+                approval_result = self._request_approval(
+                    tool_call=tool_call,
+                    step=step,
+                    trace=trace,
+                )
+
+                if approval_result is not None:
+                    self._record_tool_result(
+                        tool_call=tool_call,
+                        result=approval_result,
+                        step=step,
+                        trace=trace,
+                    )
+                    tool_results.append(
+                        ToolResult(
+                            call_id=tool_call.call_id,
+                            name=tool_call.name,
+                            result=approval_result,
+                        )
+                    )
+                    continue
 
                 try:
                     result = self._executor.execute(tool_call)
@@ -177,16 +203,11 @@ class AgentRunner:
                         )
                     )
                 else:
-                    trace.append(
-                        TraceEvent(
-                            step=step,
-                            kind="tool_result",
-                            payload={
-                                "call_id": tool_call.call_id,
-                                "name": tool_call.name,
-                                "result": result,
-                            },
-                        )
+                    self._record_tool_result(
+                        tool_call=tool_call,
+                        result=result,
+                        step=step,
+                        trace=trace,
                     )
 
                 tool_results.append(
@@ -203,16 +224,142 @@ class AgentRunner:
                 continuation_token=response.continuation_token,
             )
 
-        trace.append(
-            TraceEvent(
-                step=self._max_steps,
-                kind="run_stopped",
-                payload={"reason": StopReason.MAX_STEPS},
-            )
+        self._record_stop(
+            trace=trace,
+            step=self._max_steps,
+            reason=StopReason.MAX_STEPS,
         )
+
         return AgentResult(
             text="",
             stop_reason=StopReason.MAX_STEPS,
             steps=self._max_steps,
             trace=tuple(trace),
+        )
+
+    def _request_approval(
+        self,
+        *,
+        tool_call: ToolCall,
+        step: int,
+        trace: list[TraceEvent],
+    ) -> dict[str, Any] | None:
+        """Return an error result when a gated action is not approved."""
+
+        if not self._executor.requires_approval(tool_call.name):
+            return None
+
+        trace.append(
+            TraceEvent(
+                step=step,
+                kind="approval_requested",
+                payload={
+                    "call_id": tool_call.call_id,
+                    "name": tool_call.name,
+                    "arguments": tool_call.arguments,
+                },
+            )
+        )
+
+        if self._approval_gate is None:
+            trace.append(
+                TraceEvent(
+                    step=step,
+                    kind="approval_declined",
+                    payload={
+                        "call_id": tool_call.call_id,
+                        "name": tool_call.name,
+                        "reason": "no_approval_gate",
+                    },
+                )
+            )
+
+            return {
+                "ok": False,
+                "error": {
+                    "type": "approval_required",
+                    "message": (
+                        f"Tool {tool_call.name} requires explicit "
+                        "human approval."
+                    ),
+                },
+            }
+
+        approved = self._approval_gate.request(tool_call)
+
+        if not approved:
+            trace.append(
+                TraceEvent(
+                    step=step,
+                    kind="approval_declined",
+                    payload={
+                        "call_id": tool_call.call_id,
+                        "name": tool_call.name,
+                        "reason": "declined_by_user",
+                    },
+                )
+            )
+
+            return {
+                "ok": False,
+                "error": {
+                    "type": "declined_by_user",
+                    "message": (
+                        f"The user declined tool {tool_call.name}."
+                    ),
+                },
+            }
+
+        trace.append(
+            TraceEvent(
+                step=step,
+                kind="approval_granted",
+                payload={
+                    "call_id": tool_call.call_id,
+                    "name": tool_call.name,
+                },
+            )
+        )
+
+        return None
+
+    @staticmethod
+    def _record_tool_result(
+        *,
+        tool_call: ToolCall,
+        result: Any,
+        step: int,
+        trace: list[TraceEvent],
+    ) -> None:
+        """Record a normal tool result in the execution trace."""
+
+        trace.append(
+            TraceEvent(
+                step=step,
+                kind="tool_result",
+                payload={
+                    "call_id": tool_call.call_id,
+                    "name": tool_call.name,
+                    "result": result,
+                },
+            )
+        )
+
+    @staticmethod
+    def _record_stop(
+        *,
+        trace: list[TraceEvent],
+        step: int,
+        reason: StopReason,
+    ) -> None:
+        """Record why the agent run stopped."""
+
+        trace.append(
+            TraceEvent(
+                step=step,
+                kind="run_stopped",
+                payload={
+                    "reason": reason,
+                },
+            )
         )

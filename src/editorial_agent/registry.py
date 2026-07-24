@@ -11,11 +11,14 @@ from typing import Any, TypeAlias
 from jsonschema import Draft202012Validator
 
 from editorial_agent.models import ToolCall, ToolSchema
+from editorial_agent.publication import PublicationOutbox
 from editorial_agent.storage import ProjectStore
 from editorial_agent.tools import (
+    PUBLISH_LINKEDIN_POST_SCHEMA,
     READ_LINKEDIN_DRAFT_SCHEMA,
     READ_PRESS_RELEASE_SCHEMA,
     SAVE_LINKEDIN_DRAFT_SCHEMA,
+    publish_linkedin_post,
     read_linkedin_draft,
     read_press_release,
     save_linkedin_draft,
@@ -204,6 +207,7 @@ class ToolRegistry:
 
 def create_editorial_registry(
     store: ProjectStore,
+    outbox: PublicationOutbox,
 ) -> ToolRegistry:
     """Create the reversible tool registry for the editorial alpha."""
 
@@ -229,6 +233,14 @@ def create_editorial_registry(
                     read_linkedin_draft,
                     store,
                 ),
+            ),
+            ToolSpec(
+                schema=PUBLISH_LINKEDIN_POST_SCHEMA,
+                handler=partial(
+                    publish_linkedin_post,
+                    outbox,
+                ),
+                requires_approval=True,
             ),
         )
     )
