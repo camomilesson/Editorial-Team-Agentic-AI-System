@@ -3,6 +3,10 @@ from typing import Any
 import pytest
 
 from editorial_agent.agent import AgentRunner, StopReason
+from editorial_agent.approval import (
+    AlwaysApproveGate,
+    AlwaysDeclineGate,
+)
 from editorial_agent.models import (
     FakeModelClient,
     ModelRequest,
@@ -18,9 +22,11 @@ class RecordingExecutor:
         *,
         results: dict[str, Any] | None = None,
         failures: dict[str, Exception] | None = None,
+        approval_required: set[str] | None = None,
     ) -> None:
         self.results = results or {}
         self.failures = failures or {}
+        self.approval_required = approval_required or set()
         self.calls: list[ToolCall] = []
 
     def execute(self, tool_call: ToolCall) -> Any:
@@ -30,6 +36,9 @@ class RecordingExecutor:
             raise self.failures[tool_call.name]
 
         return self.results.get(tool_call.name)
+
+    def requires_approval(self, tool_name: str) -> bool:
+        return tool_name in self.approval_required
 
 
 def test_agent_stops_when_model_answers() -> None:
@@ -313,3 +322,242 @@ def test_agent_rejects_invalid_max_steps() -> None:
             executor=executor,
             max_steps=0,
         )
+
+
+def test_approved_gated_tool_is_executed() -> None:
+    tool_call = ToolCall(
+        call_id="call-1",
+        name="publish_linkedin_post",
+        arguments={
+            "project_id": "demo",
+            "version": 1,
+            "visibility": "public",
+        },
+    )
+
+    model = FakeModelClient(
+        (
+            ModelResponse(
+                text="",
+                tool_calls=(tool_call,),
+                continuation_token="interaction-1",
+            ),
+            ModelResponse(
+                text="Published.",
+                tool_calls=(),
+                continuation_token="interaction-2",
+            ),
+        )
+    )
+
+    executor = RecordingExecutor(
+        results={
+            "publish_linkedin_post": {
+                "ok": True,
+                "data": {
+                    "version": 1,
+                },
+            }
+        },
+        approval_required={
+            "publish_linkedin_post",
+        },
+    )
+
+    runner = AgentRunner(
+        model=model,
+        executor=executor,
+        approval_gate=AlwaysApproveGate(),
+    )
+
+    result = runner.run("Publish it")
+
+    assert result.text == "Published."
+    assert executor.calls == [tool_call]
+    assert model.requests[1].input == (
+        ToolResult(
+            call_id="call-1",
+            name="publish_linkedin_post",
+            result={
+                "ok": True,
+                "data": {
+                    "version": 1,
+                },
+            },
+        ),
+    )
+    trace_kinds = [event.kind for event in result.trace]
+    assert "approval_requested" in trace_kinds
+    assert "approval_granted" in trace_kinds
+    assert "tool_result" in trace_kinds
+    assert trace_kinds.index("approval_requested") < trace_kinds.index(
+        "approval_granted"
+    )
+    assert trace_kinds.index("approval_granted") < trace_kinds.index(
+        "tool_result"
+    )
+
+
+def test_declined_gated_tool_is_not_executed() -> None:
+    tool_call = ToolCall(
+        call_id="call-1",
+        name="publish_linkedin_post",
+        arguments={
+            "project_id": "demo",
+            "version": 1,
+            "visibility": "public",
+        },
+    )
+
+    model = FakeModelClient(
+        (
+            ModelResponse(
+                text="",
+                tool_calls=(tool_call,),
+                continuation_token="interaction-1",
+            ),
+            ModelResponse(
+                text="Publication was declined.",
+                tool_calls=(),
+                continuation_token="interaction-2",
+            ),
+        )
+    )
+
+    executor = RecordingExecutor(
+        approval_required={
+            "publish_linkedin_post",
+        },
+    )
+
+    runner = AgentRunner(
+        model=model,
+        executor=executor,
+        approval_gate=AlwaysDeclineGate(),
+    )
+
+    result = runner.run("Publish it")
+
+    assert executor.calls == []
+    assert result.text == "Publication was declined."
+
+    second_request = model.requests[1]
+    tool_result = second_request.input[0]
+
+    assert tool_result.call_id == "call-1"
+    assert tool_result.name == "publish_linkedin_post"
+    assert tool_result.result["ok"] is False
+    assert tool_result.result["error"]["type"] == (
+        "declined_by_user"
+    )
+    trace_kinds = [event.kind for event in result.trace]
+    assert "approval_requested" in trace_kinds
+    assert "approval_declined" in trace_kinds
+    assert "approval_granted" not in trace_kinds
+
+
+def test_gated_tool_without_approval_gate_is_not_executed() -> None:
+    tool_call = ToolCall(
+        call_id="call-1",
+        name="publish_linkedin_post",
+        arguments={
+            "project_id": "demo",
+            "version": 1,
+            "visibility": "public",
+        },
+    )
+    model = FakeModelClient(
+        (
+            ModelResponse(
+                text="",
+                tool_calls=(tool_call,),
+                continuation_token="interaction-1",
+            ),
+            ModelResponse(
+                text="Approval is required.",
+                tool_calls=(),
+                continuation_token="interaction-2",
+            ),
+        )
+    )
+    executor = RecordingExecutor(
+        approval_required={"publish_linkedin_post"},
+    )
+    runner = AgentRunner(
+        model=model,
+        executor=executor,
+        approval_gate=None,
+    )
+
+    result = runner.run("Publish it")
+
+    assert executor.calls == []
+    assert model.requests[1].input == (
+        ToolResult(
+            call_id="call-1",
+            name="publish_linkedin_post",
+            result={
+                "ok": False,
+                "error": {
+                    "type": "approval_required",
+                    "message": (
+                        "Tool publish_linkedin_post requires explicit "
+                        "human approval."
+                    ),
+                },
+            },
+        ),
+    )
+    declined_event = next(
+        event
+        for event in result.trace
+        if event.kind == "approval_declined"
+    )
+    assert declined_event.payload["reason"] == "no_approval_gate"
+
+
+def test_reversible_tool_ignores_declining_approval_gate() -> None:
+    tool_call = ToolCall(
+        call_id="call-1",
+        name="read_press_release",
+        arguments={"project_id": "demo"},
+    )
+    model = FakeModelClient(
+        (
+            ModelResponse(
+                text="",
+                tool_calls=(tool_call,),
+                continuation_token="interaction-1",
+            ),
+            ModelResponse(
+                text="The release was read.",
+                tool_calls=(),
+                continuation_token="interaction-2",
+            ),
+        )
+    )
+    executor = RecordingExecutor(
+        results={
+            "read_press_release": {
+                "ok": True,
+                "data": {
+                    "project_id": "demo",
+                    "content": "Press release.",
+                },
+            },
+        },
+    )
+    runner = AgentRunner(
+        model=model,
+        executor=executor,
+        approval_gate=AlwaysDeclineGate(),
+    )
+
+    result = runner.run("Read the release")
+
+    assert executor.calls == [tool_call]
+    assert model.requests[1].input[0].result["ok"] is True
+    assert not any(
+        event.kind.startswith("approval_")
+        for event in result.trace
+    )

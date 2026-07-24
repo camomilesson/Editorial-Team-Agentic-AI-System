@@ -4,6 +4,14 @@ from __future__ import annotations
 
 from typing import Any, TypeAlias
 
+from editorial_agent.publication import (
+    ALLOWED_VISIBILITIES,
+    AlreadyPublishedError,
+    DraftNotFinalError,
+    InvalidVisibilityError,
+    PublicationError,
+    PublicationOutbox,
+)
 from editorial_agent.storage import (
     ALLOWED_DRAFT_STAGES,
     DraftNotFoundError,
@@ -122,10 +130,55 @@ READ_LINKEDIN_DRAFT_SCHEMA: dict[str, Any] = {
 }
 
 
+PUBLISH_LINKEDIN_POST_SCHEMA: dict[str, Any] = {
+    "type": "function",
+    "name": "publish_linkedin_post",
+    "description": (
+        "Publish a saved final LinkedIn post into the publication outbox. "
+        "Use only when the user explicitly asks to publish or deliver a "
+        "specific saved version. Do not use to save, preview, revise, or "
+        "mark a draft as final. This action requires human approval."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "project_id": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+                "description": (
+                    "The safe project identifier used inside the workspace."
+                ),
+            },
+            "version": {
+                "type": "integer",
+                "minimum": 1,
+                "description": (
+                    "The saved final LinkedIn draft version to publish."
+                ),
+            },
+            "visibility": {
+                "type": "string",
+                "enum": list(ALLOWED_VISIBILITIES),
+                "description": (
+                    "Who should be able to see the published post."
+                ),
+            },
+        },
+        "required": [
+            "project_id",
+            "version",
+            "visibility",
+        ],
+        "additionalProperties": False,
+    },
+}
+
+
 EDITORIAL_TOOL_SCHEMAS: tuple[dict[str, Any], ...] = (
     READ_PRESS_RELEASE_SCHEMA,
     SAVE_LINKEDIN_DRAFT_SCHEMA,
     READ_LINKEDIN_DRAFT_SCHEMA,
+    PUBLISH_LINKEDIN_POST_SCHEMA,
 )
 
 
@@ -243,6 +296,67 @@ def read_linkedin_draft(
             "version": draft.version,
             "stage": draft.stage,
             "content": draft.content,
+        }
+    )
+
+
+def publish_linkedin_post(
+    outbox: PublicationOutbox,
+    *,
+    project_id: str,
+    version: int,
+    visibility: str,
+) -> ToolOutput:
+    """Publish a final post and return a structured tool result."""
+
+    try:
+        published = outbox.publish(
+            project_id=project_id,
+            version=version,
+            visibility=visibility,
+        )
+    except InvalidProjectIdError as exc:
+        return _error(
+            error_type="invalid_project_id",
+            message=str(exc),
+        )
+    except InvalidVersionError as exc:
+        return _error(
+            error_type="invalid_version",
+            message=str(exc),
+        )
+    except DraftNotFoundError as exc:
+        return _error(
+            error_type="draft_not_found",
+            message=str(exc),
+        )
+    except InvalidVisibilityError as exc:
+        return _error(
+            error_type="invalid_visibility",
+            message=str(exc),
+        )
+    except DraftNotFinalError as exc:
+        return _error(
+            error_type="draft_not_final",
+            message=str(exc),
+        )
+    except AlreadyPublishedError as exc:
+        return _error(
+            error_type="already_published",
+            message=str(exc),
+        )
+    except (PublicationError, StorageError, OSError) as exc:
+        return _error(
+            error_type="publication_error",
+            message=str(exc),
+        )
+
+    return _success(
+        {
+            "project_id": published.project_id,
+            "version": published.version,
+            "visibility": published.visibility,
+            "content": published.content,
         }
     )
 
