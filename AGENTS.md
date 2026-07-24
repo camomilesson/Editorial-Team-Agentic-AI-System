@@ -39,3 +39,6 @@ LinkedIn post and requires explicit human approval before publication.
 - Make small, reviewable changes.
 - Explain architectural changes before making broad refactors.
 - Do not commit secrets, `.env`, generated drafts, or publication output.
+- Never open, read, print, edit, or expose `.env`.
+- Use `.env.example` when reasoning about configuration.
+- Never place API keys in code, tests, logs, prompts, or commits.

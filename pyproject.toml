@@ -9,7 +9,7 @@ description = "An agentic workflow for turning press releases into LinkedIn post
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "python-dotenv>=1.0",
+    "google-genai",
 ]
 
 [project.optional-dependencies]
