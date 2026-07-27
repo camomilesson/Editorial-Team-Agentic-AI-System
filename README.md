@@ -253,6 +253,14 @@ Tests do not use the live Gemini API. The full workflow is tested with `FakeMode
 * No deletion or recall tools are exposed.
 * The live model can still produce poor editorial copy even when the surrounding workflow executes correctly.
 
+## Next-stage contracts
+
+The repository also contains provider-neutral Stage 1 contracts for the planned
+multi-user Executor–Critic workflow, persistent traces, and independent
+post-run Monitor. These are types and schemas only; they are not connected to
+the working alpha yet. See
+[`docs/stage-1-contracts.md`](docs/stage-1-contracts.md).
+
 ## Contributors
 
 **Andrei Romashkov**
