@@ -232,4 +232,4 @@ def test_authorized_collaborator_can_build_push_context(tmp_path: Path) -> None:
     pushed = service.build_push_context(context("user_b"), AgentRole.EXECUTOR)
 
     assert pushed.workflow.user_id == "user_b"
-    assert pushed.role_brief is None
+    assert pushed.role_brief.source_name == "executor_brief.md"

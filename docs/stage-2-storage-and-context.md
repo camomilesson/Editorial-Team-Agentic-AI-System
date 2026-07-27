@@ -5,9 +5,10 @@ These services are not connected to the existing live CLI or `AgentRunner`.
 
 ## SQLite structured domain storage
 
-`SQLiteDatabase` initializes `migrations/001_initial_domain.sql`, records
-schema version 1 with `PRAGMA user_version`, enables foreign keys for every
-connection, and exposes explicit transactions. Initialization is repeatable.
+`SQLiteDatabase` initializes `migrations/001_initial_domain.sql` and applies
+the later Stage 3 event migration when needed. It records the current schema
+version with `PRAGMA user_version`, enables foreign keys for every connection,
+and exposes explicit transactions. Initialization is repeatable.
 
 `SQLiteDomainRepository` persists users, documents, access grants, immutable
 document versions, shared comments, workflow runs, events, and handoffs.
@@ -47,13 +48,15 @@ There is no cross-user enumeration method.
 
 `MarkdownRulesLoader` accepts a configured trusted directory and a `RuleKind`,
 not an arbitrary path. Logical names map internally to `operating_rules.md`,
-`critic_brief.md`, and the reserved future `monitor_rubric.md`. Each load reads
+`executor_brief.md`, `critic_brief.md`, and the reserved future
+`monitor_rubric.md`. Each load reads
 the current Markdown and returns its logical kind, source filename, content,
 trust label, and SHA-256 content version. Manual edits are visible immediately.
 
 The repository now includes:
 
 - `config/operating_rules.md`;
+- `config/executor_brief.md`;
 - `config/critic_brief.md`.
 
 Missing, blank, unsupported, or unreadable rule requests produce sanitized
@@ -89,15 +92,14 @@ It only constructs the Stage 1 input contract; it does not run or judge a
 Monitor. Nina can continue developing independently with
 `tests/fixtures/completed_run_v1.json`.
 
-## Still deferred
+## Stage 2 deferred work
 
-Stage 2 does not implement:
+Stage 3 has since implemented the Executor–Critic workflow, scoped retrieval
+tools, fact decisions, structured handoffs, revisions, and final approval.
+Remaining work includes:
 
-- Executor or Critic model behavior;
-- the multi-agent orchestration loop;
-- automatic fact-worthiness decisions or model-driven saving;
-- Gemini or CLI integration for the new services;
-- tool registration for memory or comments;
-- event payload redaction beyond sanitized service boundaries;
+- polished CLI and live composition for the new workflow;
 - Monitor scheduling, verdict generation, or report persistence;
+- Nina's Monitor merge;
+- external publication;
 - migration of the existing filesystem LinkedIn drafts.

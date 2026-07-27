@@ -9,9 +9,12 @@ from pathlib import Path
 
 from editorial_agent.errors import PersistedDataError
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 DEFAULT_MIGRATION_PATH = (
     Path(__file__).resolve().parents[2] / "migrations" / "001_initial_domain.sql"
+)
+STAGE3_MIGRATION_PATH = (
+    Path(__file__).resolve().parents[2] / "migrations" / "002_stage3_events.sql"
 )
 
 
@@ -23,9 +26,11 @@ class SQLiteDatabase:
         path: Path,
         *,
         migration_path: Path = DEFAULT_MIGRATION_PATH,
+        stage3_migration_path: Path = STAGE3_MIGRATION_PATH,
     ) -> None:
         self.path = path
         self._migration_path = migration_path
+        self._stage3_migration_path = stage3_migration_path
 
     def initialize(self) -> None:
         """Create or verify the one supported schema version."""
@@ -35,14 +40,21 @@ class SQLiteDatabase:
 
         with self.connect() as connection:
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version == SCHEMA_VERSION:
-                return
-            if version != 0:
+            if version not in {0, 1, SCHEMA_VERSION}:
                 raise PersistedDataError("Unsupported database schema version.")
             try:
-                migration = self._migration_path.read_text(encoding="utf-8")
-                connection.executescript(migration)
-                connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+                if version == 0:
+                    migration = self._migration_path.read_text(encoding="utf-8")
+                    connection.executescript(migration)
+                    connection.execute("PRAGMA user_version = 1")
+                    connection.commit()
+                    version = 1
+                if version == 1:
+                    migration = self._stage3_migration_path.read_text(
+                        encoding="utf-8"
+                    )
+                    connection.executescript(migration)
+                    connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
                 connection.commit()
             except (OSError, sqlite3.Error) as exc:
                 raise PersistedDataError("Database initialization failed.") from exc

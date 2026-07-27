@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -107,6 +108,30 @@ def test_database_initialization_is_repeatable_and_records_version(
             )
         }
     assert "workflow_runs" in tables
+
+
+def test_stage2_database_upgrades_to_stage3_event_schema(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "existing-stage2.sqlite3"
+    migration = (
+        Path(__file__).parents[1] / "migrations" / "001_initial_domain.sql"
+    )
+    with sqlite3.connect(path) as connection:
+        connection.executescript(migration.read_text(encoding="utf-8"))
+        connection.execute("PRAGMA user_version = 1")
+        connection.commit()
+
+    database = SQLiteDatabase(path)
+    database.initialize()
+
+    with database.connect() as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        sql = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'run_events'"
+        ).fetchone()[0]
+    assert "memory_save_decided" in sql
+    assert "revision_limit_reached" in sql
 
 
 def test_create_and_retrieve_user_and_reject_duplicate(

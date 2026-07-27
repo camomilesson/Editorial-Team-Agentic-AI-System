@@ -148,6 +148,7 @@ class RuleKind(StrEnum):
     """Trusted Markdown documents loaded as operating context."""
 
     GLOBAL_OPERATING_RULES = "global_operating_rules"
+    EXECUTOR_DELEGATION_BRIEF = "executor_delegation_brief"
     CRITIC_DELEGATION_BRIEF = "critic_delegation_brief"
     MONITOR_RUBRIC = "monitor_rubric"
 

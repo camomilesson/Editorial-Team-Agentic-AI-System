@@ -259,11 +259,14 @@ The repository also contains provider-neutral Stage 1 contracts for the planned
 multi-user Executor–Critic workflow, persistent traces, and independent
 post-run Monitor. Stage 2 implements local SQLite domain storage, user-separated
 JSON facts, trusted Markdown rules, authorization, and separate push/pull
-context services. None of these services are connected to the working alpha
-CLI yet.
+context services. Stage 3 adds a provider-neutral Executor–Critic workflow with
+scoped retrieval tools, structured memory decisions, immutable revisions,
+persistent handoffs and events, and explicit final approval. The new workflow
+service is not connected to the working alpha CLI yet.
 
 See [`docs/stage-1-contracts.md`](docs/stage-1-contracts.md) and
-[`docs/stage-2-storage-and-context.md`](docs/stage-2-storage-and-context.md).
+[`docs/stage-2-storage-and-context.md`](docs/stage-2-storage-and-context.md),
+then [`docs/stage-3-executor-critic.md`](docs/stage-3-executor-critic.md).
 
 ## Contributors
 

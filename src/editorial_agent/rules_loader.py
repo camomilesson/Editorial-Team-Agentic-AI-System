@@ -10,6 +10,7 @@ from editorial_agent.errors import TrustedRuleError
 
 _RULE_FILES = {
     RuleKind.GLOBAL_OPERATING_RULES: "operating_rules.md",
+    RuleKind.EXECUTOR_DELEGATION_BRIEF: "executor_brief.md",
     RuleKind.CRITIC_DELEGATION_BRIEF: "critic_brief.md",
     RuleKind.MONITOR_RUBRIC: "monitor_rubric.md",
 }

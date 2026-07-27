@@ -91,9 +91,13 @@ class EditorialContextService:
             document_id=request_context.document_id,
         )
         operating_rules = self._rules.load(kind=RuleKind.GLOBAL_OPERATING_RULES)
+        role_brief_kind = {
+            AgentRole.EXECUTOR: RuleKind.EXECUTOR_DELEGATION_BRIEF,
+            AgentRole.CRITIC: RuleKind.CRITIC_DELEGATION_BRIEF,
+        }.get(role)
         role_brief = (
-            self._rules.load(kind=RuleKind.CRITIC_DELEGATION_BRIEF)
-            if role is AgentRole.CRITIC
+            self._rules.load(kind=role_brief_kind)
+            if role_brief_kind is not None
             else None
         )
         return PushedContext(
