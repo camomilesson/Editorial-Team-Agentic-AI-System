@@ -89,15 +89,14 @@ Executor handoff, and workflow completion.
 Monitor scheduling, verdict generation, LLM judgment, and report persistence
 are not implemented in Stage 1.
 
-## Deferred implementation
+## Stage 1 deferred implementation
 
-Later stages must still implement:
+Stage 2 has since implemented the local repositories, authorization, private
+fact persistence, trusted rule loading, and context assembly described in
+[`stage-2-storage-and-context.md`](stage-2-storage-and-context.md). The
+remaining later-stage work includes:
 
-- SQLite repository methods and migrations execution;
-- authorization enforcement;
-- JSON private-fact persistence, fact selection, and cue retrieval;
-- Markdown rule loading and context assembly;
-- shared-comment persistence and safe retrieval;
 - the Executor–Critic orchestration loop;
-- persistent event and handoff writing with redaction policy;
+- integration of persistent events and handoffs with that loop;
+- the final event-payload redaction policy;
 - independent Monitor invocation, verdicts, and report storage.

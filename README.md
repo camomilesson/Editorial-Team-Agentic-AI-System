@@ -253,13 +253,17 @@ Tests do not use the live Gemini API. The full workflow is tested with `FakeMode
 * No deletion or recall tools are exposed.
 * The live model can still produce poor editorial copy even when the surrounding workflow executes correctly.
 
-## Next-stage contracts
+## Editorial Team architecture work
 
 The repository also contains provider-neutral Stage 1 contracts for the planned
 multi-user Executor–Critic workflow, persistent traces, and independent
-post-run Monitor. These are types and schemas only; they are not connected to
-the working alpha yet. See
-[`docs/stage-1-contracts.md`](docs/stage-1-contracts.md).
+post-run Monitor. Stage 2 implements local SQLite domain storage, user-separated
+JSON facts, trusted Markdown rules, authorization, and separate push/pull
+context services. None of these services are connected to the working alpha
+CLI yet.
+
+See [`docs/stage-1-contracts.md`](docs/stage-1-contracts.md) and
+[`docs/stage-2-storage-and-context.md`](docs/stage-2-storage-and-context.md).
 
 ## Contributors
 

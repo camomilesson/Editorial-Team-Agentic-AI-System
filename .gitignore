@@ -31,3 +31,11 @@ workspace/*
 
 # Generated publication output
 published/
+
+# Stage 2 local structured data, private memory, and run logs
+*.db
+*.sqlite
+*.sqlite3
+private-memory/
+run-logs/
+*.tmp
