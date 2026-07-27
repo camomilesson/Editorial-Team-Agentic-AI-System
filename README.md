@@ -2,12 +2,15 @@
 
 A traceable, multi-user editorial workflow that turns source material into a
 versioned LinkedIn post through an Executor–Critic loop and requires explicit
-human approval before finalization.
+human approval before finalization, and can be evaluated afterward by an
+independent Monitor.
 
-The repository contains two working paths:
+The repository contains three working paths:
 
 - the current Executor–Critic workflow, backed by SQLite, user-scoped private
   memory, trusted Markdown rules, immutable versions, and persistent evidence;
+- the independent Monitor, which evaluates a terminal workflow bundle and
+  writes a separate structured report;
 - the original single-agent alpha CLI, retained as a small local publication
   demo.
 
@@ -27,8 +30,12 @@ flowchart LR
     V --> K["Critic"]
     K -->|grounded revision| E
     K -->|accept| A["Human approval"]
-    A -->|approve| D["Completed run bundle"]
+    A -->|approve| D["Completed run"]
     A -->|decline| B["Blocked run"]
+    D --> X["Terminal evidence bundle"]
+    B --> X
+    X --> I["Independent Monitor"]
+    I --> R["Separate Monitor report"]
 ```
 
 Each run has explicit user, session, document, and run identity. The workflow:
@@ -42,7 +49,49 @@ Each run has explicit user, session, document, and run identity. The workflow:
 6. permits at most two grounded revision rounds;
 7. requests human approval for the exact Critic-accepted version;
 8. persists ordered events, handoffs, versions, approval state, and terminal
-   status in a completed-run evidence bundle.
+   status in a completed-run evidence bundle;
+9. allows the independent Monitor to evaluate that bundle without mutating the
+   original workflow.
+
+## Independent Monitor
+
+The Monitor runs separately after the workflow reaches a terminal state. It
+consumes a `CompletedRunBundle`, applies a trusted Monitor rubric, and produces
+a structured `MonitorReport`.
+
+It evaluates seven axes:
+
+- source fidelity;
+- instruction adherence;
+- task completion;
+- Critic consistency;
+- revision quality;
+- approval and terminal-state integrity;
+- trace completeness.
+
+Each axis receives exactly one judgment:
+
+```text
+pass
+partial
+fail
+unknown
+insufficient_evidence
+```
+
+The Monitor:
+
+- starts a fresh model request independent of Executor and Critic sessions;
+- reads only the supplied evidence bundle and trusted Monitor rubric;
+- validates all evidence references against stable identifiers in the bundle;
+- handles both rich and sparse schema-v1 bundles;
+- treats bundle contents as untrusted evidence rather than instructions;
+- writes its report separately;
+- cannot revise, approve, publish, write memory, or mutate workflow state.
+
+A workflow may pass its harness assertions while still receiving a critical
+Monitor finding. Likewise, a correctly blocked run is not automatically treated
+as a system failure.
 
 ## Safety and trust boundaries
 
@@ -65,20 +114,31 @@ Each run has explicit user, session, document, and run identity. The workflow:
 - Model steps, revision rounds, scenarios, and approval attempts are bounded.
 - Events contain stable references and sanitized summaries, not API keys,
   provider continuation tokens, raw memory stores, or unnecessary prompts.
+- Monitor reports may cite only identifiers explicitly available in their input
+  bundle.
+- Invalid Monitor axes or evidence references are rejected before persistence.
+- The Monitor has no access to SQLite, private memory, approval actions, or
+  workflow mutation tools.
 
 ## Storage architecture
 
-The project deliberately separates three storage classes:
+The project deliberately separates three workflow storage classes, plus
+independent Monitor output:
 
 | Storage | Data |
 |---|---|
 | SQLite | Users, documents, access grants, versions, comments, runs, events, and handoffs |
 | User-scoped JSON | Durable private facts and retrieval cues |
-| Trusted Markdown | Operating rules and Executor/Critic briefs |
+| Trusted Markdown | Operating rules, role briefs, and Monitor rubric |
+| Separate JSON reports | Independent Monitor evaluations |
 
-SQLite migrations are applied in order from `migrations/`. Completed-run
+SQLite migrations are applied in order from `migrations/`. Rich completed-run
 bundles contain the source version, every run-created draft, explicit Critic
-outcomes, and deterministic event and handoff ordering.
+outcomes, and deterministic event and handoff ordering; older sparse schema-v1
+bundles remain valid.
+
+Monitor reports are persisted separately and never replace or modify the input
+bundle.
 
 ## Repository layout
 
@@ -87,6 +147,7 @@ config/
     operating_rules.md
     executor_brief.md
     critic_brief.md
+    monitor_rubric.md
 
 migrations/
     001_initial_domain.sql
@@ -107,8 +168,16 @@ src/editorial_agent/
     approval.py              interactive and deterministic gates
     agent.py                 original alpha agent loop
 
+    monitoring/
+        runner.py            independent Monitor execution
+        evidence.py          deterministic evidence index
+        prompts.py           trusted Monitor prompt composition
+        persistence.py       separate atomic report persistence
+        errors.py            sanitized Monitor failures
+
 scripts/
     live_editorial_workflow.py
+    run_monitor.py
     demo_workflow.py
     manual_publish_demo.py
 
@@ -119,7 +188,7 @@ tests/
 ## Requirements
 
 - Python 3.11 or newer
-- A Gemini API key for live model runs
+- A Gemini API key for live workflow and Monitor runs
 
 The project is currently tested with Python 3.14. A third-party
 `google-genai` deprecation warning may appear on Python 3.14; it does not
@@ -151,8 +220,9 @@ source .env
 set +a
 ```
 
-Never commit `.env`, API keys, runtime databases, private-memory files, or live
-evidence. Use only synthetic or provider-safe source material.
+Never commit `.env`, API keys, runtime databases, private-memory files, live
+evidence, or generated Monitor reports. Use only synthetic or provider-safe
+source material.
 
 ## Run the live integration workflow
 
@@ -197,6 +267,62 @@ Runtime databases, private memory, and scenario summaries are written beneath
 the ignored `live-evidence/` directory by default. Terminal and JSON output
 distinguish `passed`, `failed`, and `inconclusive`.
 
+## Run the Independent Monitor
+
+The repository includes committed synthetic fixtures for a completed workflow,
+a blocked approval-decline workflow, and an older sparse schema-v1 bundle.
+
+Evaluate the completed fixture:
+
+```bash
+.venv/bin/python scripts/run_monitor.py \
+  --bundle tests/fixtures/completed_run_monitor_v1.json \
+  --output /tmp/completed-monitor-report.json \
+  --force
+```
+
+Evaluate the blocked fixture:
+
+```bash
+.venv/bin/python scripts/run_monitor.py \
+  --bundle tests/fixtures/blocked_run_monitor_v1.json \
+  --output /tmp/blocked-monitor-report.json \
+  --force
+```
+
+A successful run prints the monitored run ID, all seven axis judgments, the
+number of findings, and the report path.
+
+Example completed result:
+
+```text
+source_fidelity=pass
+instruction_adherence=pass
+task_completion=pass
+critic_consistency=pass
+revision_quality=pass
+approval_and_terminal_state=pass
+trace_completeness=pass
+```
+
+A correctly blocked run can produce a mixed but coherent result, for example:
+
+```text
+task_completion=partial
+revision_quality=insufficient_evidence
+approval_and_terminal_state=pass
+```
+
+The CLI refuses to persist reports containing:
+
+- missing or duplicate required axes;
+- invalid judgment values;
+- mismatched run identity;
+- invented evidence references.
+
+It also refuses to overwrite an existing output unless `--force` is supplied
+and will not allow the output path to equal the input bundle path.
+
 ## Run the original alpha
 
 The installed alpha command remains available:
@@ -228,16 +354,28 @@ Run the deterministic test suite:
 .venv/bin/python -m pytest
 ```
 
+Current baseline:
+
+```text
+275 passed, 1 third-party deprecation warning
+```
+
 Run lint checks:
 
 ```bash
 .venv/bin/ruff check .
 ```
 
+Check patch formatting:
+
+```bash
+git diff --check
+```
+
 Tests block network access and use deterministic fake models, temporary
 databases, temporary private-memory roots, real schemas, real orchestration,
-and deterministic approval gates. Live Gemini scenarios are separate from the
-offline suite.
+deterministic approval gates, and fake Monitor responses. Live Gemini workflow
+and Monitor runs are separate from the offline suite.
 
 ## Documentation
 
@@ -245,17 +383,21 @@ offline suite.
 - [Stage 2: storage and context](docs/stage-2-storage-and-context.md)
 - [Stage 3: Executor–Critic workflow](docs/stage-3-executor-critic.md)
 - [Stage 4: live integration and evidence](docs/stage-4-live-integration.md)
-- [Independent Monitor handoff](docs/monitor-handoff.md)
+- [Monitor implementation handoff](docs/monitor-handoff.md)
+- [Independent Monitor](docs/independent-monitor.md)
 
 ## Current limitations
 
 - No real LinkedIn publishing integration.
 - The polished product CLI still uses the original alpha; the current
-  Executor–Critic path is exposed through the separate live harness.
-- Storage and approval are local.
-- Frozen Monitor input/output contracts and rich committed fixtures exist, but
-  independent Monitor execution and scheduling are not implemented yet.
-  Nina’s separate branch will implement that boundary.
+  Executor–Critic workflow and Independent Monitor are exposed through separate
+  scripts.
+- Storage, approval, and Monitor execution are local.
+- Monitor execution is manual rather than scheduled.
+- The Monitor evaluates only the supplied evidence bundle and does not fetch
+  missing workflow context from storage.
+- Sparse schema-v1 bundles can produce `unknown` or `insufficient_evidence`
+  judgments when newer evidence fields are unavailable.
 - Live model quality can vary; malformed or weak results remain visible rather
   than being replaced with fake output or unlimited retries.
 
@@ -264,8 +406,10 @@ offline suite.
 **Andrei Romashkov**
 
 Core architecture, storage integration, Executor–Critic orchestration, Gemini
-boundary, approval flow, live scenarios, evidence, testing, and documentation.
+boundary, approval flow, live scenarios, evidence, Monitor live-integration
+repairs, testing, and documentation.
 
 **Nina Perišić**
 
-Independent Monitor implementation planned on a separate branch.
+Independent Monitor implementation, evaluation rubric, evidence indexing,
+report persistence, CLI integration, and Monitor tests.
