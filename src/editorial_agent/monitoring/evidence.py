@@ -15,6 +15,7 @@ class EvidenceIndex:
     """Stable references and observable facts derived only from a bundle."""
 
     references: frozenset[str]
+    references_by_type: dict[str, tuple[str, ...]]
     summary: dict[str, Any]
 
 
@@ -52,16 +53,23 @@ def build_evidence_index(bundle: CompletedRunBundle) -> EvidenceIndex:
         if handoff.status is OutcomeStatus.REVISE
     ]
 
-    references = {
-        str(bundle.run.run_id),
-        str(bundle.run.document_id),
-        bundle.operating_rules.version,
-        bundle.critic_rubric.version,
+    references_by_type = {
+        "run_id": (str(bundle.run.run_id),),
+        "document_id": (str(bundle.run.document_id),),
+        "document_version_id": tuple(
+            str(version.document_version_id) for version in bundle.document_versions
+        ),
+        "event_id": tuple(str(event.event_id) for event in bundle.events),
+        "handoff_id": tuple(
+            str(handoff.handoff_id) for handoff in bundle.handoffs
+        ),
+        "operating_rules_version": (bundle.operating_rules.version,),
+        "critic_rubric_version": (bundle.critic_rubric.version,),
     }
-    references.update(str(event.event_id) for event in bundle.events)
-    references.update(str(handoff.handoff_id) for handoff in bundle.handoffs)
-    references.update(
-        str(version.document_version_id) for version in bundle.document_versions
+    references = frozenset(
+        reference
+        for typed_references in references_by_type.values()
+        for reference in typed_references
     )
 
     missing: list[str] = []
@@ -113,7 +121,11 @@ def build_evidence_index(bundle: CompletedRunBundle) -> EvidenceIndex:
         "critic_rubric_version": bundle.critic_rubric.version,
         "missing_evidence_classes": missing,
     }
-    return EvidenceIndex(references=frozenset(references), summary=summary)
+    return EvidenceIndex(
+        references=references,
+        references_by_type=references_by_type,
+        summary=summary,
+    )
 
 
 def _revision_count(

@@ -106,3 +106,124 @@ def test_cli_reports_sanitized_missing_configuration(
     assert code != 0
     assert "export GEMINI_API_KEY" in captured.err
     assert "Relay" not in captured.err
+
+
+def test_cli_rejects_invalid_references_without_persisting_report(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    bundle_path = FIXTURES / "completed_run_monitor_v1.json"
+    output = tmp_path / "report.json"
+    response = response_for(bundle_path)
+    payload = json.loads(response.text)
+    payload["findings"][0]["evidence_references"] = ["event_invented_001"]
+    fake = FakeModelClient(
+        [
+            ModelResponse(
+                text=json.dumps(payload),
+                tool_calls=(),
+                continuation_token=None,
+            )
+        ]
+    )
+    original = bundle_path.read_bytes()
+    monkeypatch.setenv("GEMINI_API_KEY", "secret-that-must-not-print")
+    monkeypatch.setattr(run_monitor, "GeminiModelClient", lambda **kwargs: fake)
+
+    code = run_monitor.main(
+        ["--bundle", str(bundle_path), "--output", str(output)]
+    )
+
+    captured = capsys.readouterr()
+    assert code != 0
+    assert not output.exists()
+    assert bundle_path.read_bytes() == original
+    assert "Returned references:" in captured.err
+    assert "Allowed references:" in captured.err
+    assert "Invalid references: ['event_invented_001']" in captured.err
+    assert "Aster Works" not in captured.err
+    assert "secret-that-must-not-print" not in captured.err
+
+
+def test_cli_reports_axis_mismatch_without_evidence_or_bundle_content(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    bundle_path = FIXTURES / "blocked_run_monitor_v1.json"
+    output = tmp_path / "blocked-report.json"
+    response = response_for(bundle_path)
+    payload = json.loads(response.text)
+    payload["findings"] = payload["findings"][:-2]
+    fake = FakeModelClient(
+        [
+            ModelResponse(
+                text=json.dumps(payload),
+                tool_calls=(),
+                continuation_token=None,
+            )
+        ]
+    )
+    original = bundle_path.read_bytes()
+    monkeypatch.setenv("GEMINI_API_KEY", "secret-that-must-not-print")
+    monkeypatch.setattr(run_monitor, "GeminiModelClient", lambda **kwargs: fake)
+
+    code = run_monitor.main(
+        ["--bundle", str(bundle_path), "--output", str(output)]
+    )
+
+    captured = capsys.readouterr()
+    assert code != 0
+    assert not output.exists()
+    assert bundle_path.read_bytes() == original
+    assert "Returned axes:" in captured.err
+    assert "Required axes:" in captured.err
+    assert (
+        "Missing axes: ['approval_and_terminal_state', 'trace_completeness']"
+        in captured.err
+    )
+    assert "Duplicate axes: []" in captured.err
+    assert "references:" not in captured.err
+    assert "Relay" not in captured.err
+    assert "secret-that-must-not-print" not in captured.err
+
+
+def test_cli_accepts_blocked_report_with_all_axes_and_coherent_judgments(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    bundle_path = FIXTURES / "blocked_run_monitor_v1.json"
+    output = tmp_path / "blocked-report.json"
+    response = response_for(bundle_path)
+    payload = json.loads(response.text)
+    for finding in payload["findings"]:
+        if finding["axis"] == MonitorAxis.TASK_COMPLETION.value:
+            finding["judgment"] = MonitorJudgment.PARTIAL.value
+        if finding["axis"] == MonitorAxis.APPROVAL_AND_TERMINAL_STATE.value:
+            finding["judgment"] = MonitorJudgment.PASS.value
+    fake = FakeModelClient(
+        [
+            ModelResponse(
+                text=json.dumps(payload),
+                tool_calls=(),
+                continuation_token=None,
+            )
+        ]
+    )
+    monkeypatch.setenv("GEMINI_API_KEY", "secret-that-must-not-print")
+    monkeypatch.setattr(run_monitor, "GeminiModelClient", lambda **kwargs: fake)
+
+    code = run_monitor.main(
+        ["--bundle", str(bundle_path), "--output", str(output)]
+    )
+
+    report = MonitorReport.from_dict(json.loads(output.read_text(encoding="utf-8")))
+    judgments = {finding.axis: finding.judgment for finding in report.findings}
+    assert code == 0
+    assert len(report.findings) == len(MonitorAxis)
+    assert judgments[MonitorAxis.TASK_COMPLETION] is MonitorJudgment.PARTIAL
+    assert (
+        judgments[MonitorAxis.APPROVAL_AND_TERMINAL_STATE]
+        is MonitorJudgment.PASS
+    )

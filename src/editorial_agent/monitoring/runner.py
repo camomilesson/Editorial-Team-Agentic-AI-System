@@ -60,23 +60,28 @@ class MonitorRunner:
             raise MonitorValidationError("Monitor report run identity is invalid.")
         if report.schema_version != MONITOR_REPORT_SCHEMA_VERSION:
             raise MonitorValidationError("Monitor report schema version is invalid.")
-        axes = [finding.axis for finding in report.findings]
-        required = set(MonitorAxis)
-        if len(axes) != len(required) or set(axes) != required:
+        axes = tuple(finding.axis for finding in report.findings)
+        required = tuple(MonitorAxis)
+        missing = frozenset(required) - frozenset(axes)
+        duplicates = frozenset(axis for axis in axes if axes.count(axis) > 1)
+        if len(axes) != len(required) or missing or duplicates:
             raise MonitorValidationError(
-                "Monitor report must contain every required axis exactly once."
+                "Monitor report must contain every required axis exactly once.",
+                returned_axes=tuple(axis.value for axis in axes),
+                required_axes=tuple(axis.value for axis in required),
+                missing_axes=frozenset(axis.value for axis in missing),
+                duplicate_axes=frozenset(axis.value for axis in duplicates),
             )
-        if any(not finding.evidence_references for finding in report.findings):
-            raise MonitorValidationError(
-                "Every Monitor finding must cite supplied evidence."
-            )
-        invalid = {
+        returned = frozenset(
             reference
             for finding in report.findings
             for reference in finding.evidence_references
-            if reference not in references
-        }
+        )
+        invalid = returned - references
         if invalid:
             raise MonitorValidationError(
-                "Monitor report contains invalid evidence references."
+                "Monitor report contains invalid evidence references.",
+                returned_references=returned,
+                allowed_references=references,
+                invalid_references=frozenset(invalid),
             )

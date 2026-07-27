@@ -15,22 +15,38 @@ store, and no approval or publication capability. It cannot remediate the run.
 
 `MonitorRunner` is injected with the provider-neutral `ModelClient` and a
 trusted `RuleDocument` for `MONITOR_RUBRIC`. The evidence layer derives a
-deterministic index of stable run, document-version, event, handoff, operating
-rule, and Critic-rubric references. It also records observable facts and
-missing evidence classes without making editorial judgments.
+deterministic index containing the run ID, document ID, document-version IDs,
+event IDs, handoff IDs, operating-rules version, and Critic-rubric version
+present in the bundle. It also records observable facts and missing evidence
+classes without making editorial judgments.
 
-The prompt has four explicit sections:
+The prompt has six explicit sections:
 
 1. trusted Monitor rubric;
-2. deterministic evidence summary;
-3. untrusted serialized completed-run bundle;
-4. existing output contract.
+2. exact required axes derived from `MonitorAxis`;
+3. deterministic evidence summary;
+4. exact allowed evidence-reference strings grouped by reference type;
+5. untrusted serialized completed-run bundle;
+6. existing output contract.
 
 The runner makes exactly one request with no tools and no continuation token.
 It parses the response through `MonitorReport.from_dict`, requires every
 `MonitorAxis` exactly once, verifies the report run identity, and rejects any
 finding that cites a reference absent from the evidence index. Invalid or
 malformed output fails with a sanitized error.
+
+Evidence references are literal opaque strings: prefixes, descriptions,
+paraphrases, and surrounding whitespace are not equivalent. A finding may use
+an empty reference list when the bundle has no stable evidence supporting that
+axis. On invalid-reference failure, the CLI prints only the returned, allowed,
+and invalid identifier sets; it does not print evidence content or persist a
+partial report.
+
+Axis validation likewise remains strict: every required axis must occur exactly
+once. A blocked run is evaluated across all axes; respecting a human decline
+can support a positive approval-integrity judgment even though task completion
+is not a pass. Axis failures print only returned, required, missing, and
+duplicate axis names.
 
 ## Sparse and rich evidence
 

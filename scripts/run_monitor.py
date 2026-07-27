@@ -14,6 +14,7 @@ from editorial_agent.gemini import DEFAULT_GEMINI_MODEL, GeminiModelClient
 from editorial_agent.monitoring import (
     MonitorError,
     MonitorRunner,
+    MonitorValidationError,
     persist_monitor_report,
 )
 from editorial_agent.rules_loader import MarkdownRulesLoader
@@ -58,6 +59,33 @@ def main(argv: list[str] | None = None) -> int:
             input_bundle_path=args.bundle,
             force=args.force,
         )
+    except MonitorValidationError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        if exc.returned_axes is not None:
+            print(f"Returned axes: {list(exc.returned_axes)!r}", file=sys.stderr)
+            print(f"Required axes: {list(exc.required_axes or ())!r}", file=sys.stderr)
+            print(
+                f"Missing axes: {sorted(exc.missing_axes or ())!r}",
+                file=sys.stderr,
+            )
+            print(
+                f"Duplicate axes: {sorted(exc.duplicate_axes or ())!r}",
+                file=sys.stderr,
+            )
+        elif exc.returned_references is not None:
+            print(
+                f"Returned references: {sorted(exc.returned_references)!r}",
+                file=sys.stderr,
+            )
+            print(
+                f"Allowed references: {sorted(exc.allowed_references or ())!r}",
+                file=sys.stderr,
+            )
+            print(
+                f"Invalid references: {sorted(exc.invalid_references or ())!r}",
+                file=sys.stderr,
+            )
+        return 4
     except MonitorError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 4
