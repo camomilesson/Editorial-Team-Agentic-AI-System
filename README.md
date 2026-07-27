@@ -154,6 +154,10 @@ set +a
 
 Do not use private or confidential press releases with a provider account whose data terms do not permit them.
 
+The Stage 3 Executor–Critic workflow has a separate bounded live-integration
+harness for Gemini behavior and local evidence collection. See
+[`docs/stage-4-live-integration.md`](docs/stage-4-live-integration.md).
+
 ## Prepare the demo project
 
 Copy the tracked synthetic release into the ignored runtime workspace:

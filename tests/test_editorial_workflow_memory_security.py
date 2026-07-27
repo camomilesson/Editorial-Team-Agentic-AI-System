@@ -158,6 +158,12 @@ def test_private_fact_is_pulled_through_tool_and_influences_draft(
     assert EventType.MEMORY_RETRIEVAL_COMPLETED in {
         event.event_type for event in events
     }
+    retrieval_event = next(
+        event
+        for event in events
+        if event.event_type is EventType.MEMORY_RETRIEVAL_COMPLETED
+    )
+    assert retrieval_event.payload["fact_ids"] == ["existing_fact"]
 
 
 def test_user_b_cannot_retrieve_user_a_fact(tmp_path: Path) -> None:
@@ -295,6 +301,15 @@ def test_legitimate_and_malicious_comments_remain_untrusted_data(
         user_id=context_b.user_id,
         document_id=context_b.document_id,
     )
+    comment_event = next(
+        event
+        for event in events
+        if event.event_type is EventType.SHARED_COMMENTS_RETRIEVED
+    )
+    assert comment_event.payload["comment_ids"] == [
+        "comment_legitimate",
+        "comment_malicious",
+    ]
     handoffs = repository.list_run_handoffs(
         run_id=context_b.run_id,
         user_id=context_b.user_id,

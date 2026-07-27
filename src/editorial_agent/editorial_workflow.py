@@ -630,17 +630,51 @@ class EditorialWorkflowRunner:
             },
         )
         if call.name == "retrieve_private_facts":
+            fact_ids = self._result_identifiers(data, collection="facts", key="fact_id")
             self._emit(
                 EventType.MEMORY_RETRIEVAL_COMPLETED,
                 role,
-                {"ok": ok, "result_count": count},
+                {
+                    "ok": ok,
+                    "result_count": count,
+                    "fact_ids": fact_ids,
+                },
             )
         elif call.name == "retrieve_shared_comments":
+            comment_ids = self._result_identifiers(
+                data,
+                collection="comments",
+                key="comment_id",
+            )
             self._emit(
                 EventType.SHARED_COMMENTS_RETRIEVED,
                 role,
-                {"ok": ok, "result_count": count},
+                {
+                    "ok": ok,
+                    "result_count": count,
+                    "comment_ids": comment_ids,
+                },
             )
+
+    @staticmethod
+    def _result_identifiers(
+        data: object,
+        *,
+        collection: str,
+        key: str,
+    ) -> list[str]:
+        """Extract opaque retrieval references without persisting content."""
+
+        if not isinstance(data, dict):
+            return []
+        items = data.get(collection)
+        if not isinstance(items, list):
+            return []
+        return [
+            str(item[key])
+            for item in items
+            if isinstance(item, dict) and isinstance(item.get(key), str)
+        ]
 
     def _emit_context(self, pushed: object) -> None:
         role = pushed.role
