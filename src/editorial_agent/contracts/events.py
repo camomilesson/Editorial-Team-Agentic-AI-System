@@ -44,6 +44,8 @@ class EventType(StrEnum):
     HANDOFF_CREATED = "handoff_created"
     REVISION_REQUESTED = "revision_requested"
     REVISION_LIMIT_REACHED = "revision_limit_reached"
+    CRITIC_REVIEW_COMPLETED = "critic_review_completed"
+    CRITIC_GROUNDING_REJECTED = "critic_grounding_rejected"
     RUN_COMPLETED = "run_completed"
     RUN_BLOCKED = "run_blocked"
     RUN_FAILED = "run_failed"

@@ -132,26 +132,45 @@ class CriticVerdict(StrEnum):
     REVISE = "revise"
 
 
+class CriticIssueType(StrEnum):
+    """How a Critic issue relates to the exact reviewed draft."""
+
+    PRESENT_CONTENT = "present_content"
+    MISSING_REQUIRED_CONTENT = "missing_required_content"
+    CONFLICT = "conflict"
+    STYLE = "style"
+
+
 @dataclass(frozen=True)
 class CriticIssue:
     """One concrete rubric issue requiring a change."""
 
+    issue_type: CriticIssueType
     category: str
     summary: str
-    evidence: str
+    source_evidence: str
     required_change: str
+    draft_excerpt: str | None = None
 
     def __post_init__(self) -> None:
         require_non_blank(self.category, "issue.category")
         require_non_blank(self.summary, "issue.summary")
-        require_non_blank(self.evidence, "issue.evidence")
+        require_non_blank(self.source_evidence, "issue.source_evidence")
         require_non_blank(self.required_change, "issue.required_change")
+        if self.issue_type is CriticIssueType.PRESENT_CONTENT:
+            if self.draft_excerpt is None:
+                raise ValueError("present-content issues require draft_excerpt")
+            require_non_blank(self.draft_excerpt, "issue.draft_excerpt")
+        elif self.draft_excerpt is not None:
+            require_non_blank(self.draft_excerpt, "issue.draft_excerpt")
 
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> dict[str, str | None]:
         return {
+            "issue_type": self.issue_type.value,
             "category": self.category,
             "summary": self.summary,
-            "evidence": self.evidence,
+            "draft_excerpt": self.draft_excerpt,
+            "source_evidence": self.source_evidence,
             "required_change": self.required_change,
         }
 
@@ -159,12 +178,25 @@ class CriticIssue:
     def from_dict(cls, value: dict[str, Any]) -> CriticIssue:
         _require_exact_keys(
             value,
-            required={"category", "summary", "evidence", "required_change"},
-            optional=set(),
+            required={
+                "issue_type",
+                "category",
+                "summary",
+                "source_evidence",
+                "required_change",
+            },
+            optional={"draft_excerpt"},
             field_name="Critic issue",
         )
         try:
-            return cls(**value)
+            return cls(
+                issue_type=CriticIssueType(value["issue_type"]),
+                category=value["category"],
+                summary=value["summary"],
+                source_evidence=value["source_evidence"],
+                required_change=value["required_change"],
+                draft_excerpt=value.get("draft_excerpt"),
+            )
         except (TypeError, ValueError) as exc:
             raise RoleOutputError("Critic issue is invalid") from exc
 

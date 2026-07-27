@@ -9,12 +9,17 @@ from pathlib import Path
 
 from editorial_agent.errors import PersistedDataError
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 DEFAULT_MIGRATION_PATH = (
     Path(__file__).resolve().parents[2] / "migrations" / "001_initial_domain.sql"
 )
 STAGE3_MIGRATION_PATH = (
     Path(__file__).resolve().parents[2] / "migrations" / "002_stage3_events.sql"
+)
+STAGE4_REPAIR_MIGRATION_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "migrations"
+    / "003_stage4_repair_events.sql"
 )
 
 
@@ -27,10 +32,12 @@ class SQLiteDatabase:
         *,
         migration_path: Path = DEFAULT_MIGRATION_PATH,
         stage3_migration_path: Path = STAGE3_MIGRATION_PATH,
+        stage4_repair_migration_path: Path = STAGE4_REPAIR_MIGRATION_PATH,
     ) -> None:
         self.path = path
         self._migration_path = migration_path
         self._stage3_migration_path = stage3_migration_path
+        self._stage4_repair_migration_path = stage4_repair_migration_path
 
     def initialize(self) -> None:
         """Create or verify the one supported schema version."""
@@ -40,7 +47,7 @@ class SQLiteDatabase:
 
         with self.connect() as connection:
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version not in {0, 1, SCHEMA_VERSION}:
+            if version not in {0, 1, 2, SCHEMA_VERSION}:
                 raise PersistedDataError("Unsupported database schema version.")
             try:
                 if version == 0:
@@ -51,6 +58,14 @@ class SQLiteDatabase:
                     version = 1
                 if version == 1:
                     migration = self._stage3_migration_path.read_text(
+                        encoding="utf-8"
+                    )
+                    connection.executescript(migration)
+                    connection.execute("PRAGMA user_version = 2")
+                    connection.commit()
+                    version = 2
+                if version == 2:
+                    migration = self._stage4_repair_migration_path.read_text(
                         encoding="utf-8"
                     )
                     connection.executescript(migration)

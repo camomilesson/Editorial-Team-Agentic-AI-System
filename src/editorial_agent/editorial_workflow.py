@@ -41,7 +41,11 @@ from editorial_agent.errors import EditorialServiceError
 from editorial_agent.models import ModelClient, ToolCall
 from editorial_agent.role_agents import RoleAgent, RoleAgentError
 from editorial_agent.role_prompts import build_critic_prompt, build_executor_prompt
-from editorial_agent.role_results import CriticResult, ExecutorResult
+from editorial_agent.role_results import (
+    CriticIssueType,
+    CriticResult,
+    ExecutorResult,
+)
 from editorial_agent.role_tools import (
     create_critic_tool_registry,
     create_executor_tool_registry,
@@ -49,6 +53,10 @@ from editorial_agent.role_tools import (
 
 Clock = Callable[[], datetime]
 IdFactory = Callable[[str], str]
+
+
+class CriticGroundingError(RuntimeError):
+    """A Critic issue alleges wording absent from the reviewed draft."""
 
 
 @dataclass(frozen=True)
@@ -110,6 +118,7 @@ class EditorialWorkflowRunner:
         self._event_sequence = 0
         self._handoff_sequence = 0
         self._context: WorkflowRequestContext | None = None
+        self._executor_retrieved_shared_comments = False
 
     def run(self, context: WorkflowRequestContext) -> EditorialWorkflowResult:
         """Run from authorized source through Critic acceptance and approval."""
@@ -117,6 +126,7 @@ class EditorialWorkflowRunner:
         self._context = context
         self._event_sequence = 0
         self._handoff_sequence = 0
+        self._executor_retrieved_shared_comments = False
         revision_count = 0
         current_version: DocumentVersionRecord | None = None
         run_created = False
@@ -156,6 +166,7 @@ class EditorialWorkflowRunner:
                         request_context=context,
                     ),
                     max_steps=self._max_role_steps,
+                    required_tools=frozenset({"retrieve_private_facts"}),
                 )
                 executor_outcome = executor.run(
                     build_executor_prompt(
@@ -231,6 +242,11 @@ class EditorialWorkflowRunner:
                         request_context=context,
                     ),
                     max_steps=self._max_role_steps,
+                    required_tools=(
+                        frozenset({"retrieve_shared_comments"})
+                        if self._executor_retrieved_shared_comments
+                        else frozenset()
+                    ),
                 )
                 critic_outcome = critic.run(
                     build_critic_prompt(
@@ -239,6 +255,9 @@ class EditorialWorkflowRunner:
                         candidate_content=current_version.content,
                         revision_count=revision_count,
                         max_revisions=self._max_revisions,
+                        require_shared_comments=(
+                            self._executor_retrieved_shared_comments
+                        ),
                     ),
                     **self._role_callbacks(),
                 )
@@ -256,6 +275,23 @@ class EditorialWorkflowRunner:
                             "The requested human approval was declined.",
                         )
                     critic_outcome = self._without_approval(critic_outcome)
+                critic_result = (
+                    CriticResult.from_dict(critic_outcome.result or {})
+                    if critic_outcome.status
+                    in {OutcomeStatus.COMPLETE, OutcomeStatus.REVISE}
+                    else None
+                )
+                if critic_result is not None:
+                    self._validate_critic_grounding(
+                        result=critic_result,
+                        version=current_version,
+                    )
+                    self._record_critic_review(
+                        context=context,
+                        result=critic_result,
+                        version=current_version,
+                        round_number=revision_count,
+                    )
                 critic_action = validate_transition(
                     actor=AgentRole.CRITIC,
                     outcome=critic_outcome,
@@ -263,6 +299,14 @@ class EditorialWorkflowRunner:
                     max_critic_revisions=self._max_revisions,
                 )
                 if critic_action is TransitionAction.COMPLETE_WORKFLOW:
+                    if critic_result is None:
+                        raise RuntimeError("accepted Critic result is missing")
+                    self._handoff_critic_acceptance(
+                        context=context,
+                        round_number=revision_count,
+                        result=critic_result,
+                        version=current_version,
+                    )
                     approved = self._request_approval(
                         current_version,
                         action="finalize_editorial_version",
@@ -304,7 +348,8 @@ class EditorialWorkflowRunner:
                         revision_count=revision_count,
                     )
                 if critic_action is TransitionAction.DISPATCH_EXECUTOR:
-                    critic_result = CriticResult.from_dict(critic_outcome.result or {})
+                    if critic_result is None:
+                        raise RuntimeError("revision Critic result is missing")
                     feedback_key = json.dumps(
                         critic_result.to_dict(),
                         sort_keys=True,
@@ -352,10 +397,19 @@ class EditorialWorkflowRunner:
                     revision_count,
                     current_version,
                 )
-        except RoleAgentError:
+        except CriticGroundingError:
             error = SanitizedError(
-                "invalid_role_response",
-                "A role could not produce a valid structured result.",
+                "critic_grounding",
+                "The Critic referenced wording absent from the reviewed draft.",
+            )
+        except RoleAgentError as exc:
+            error = SanitizedError(
+                exc.code,
+                (
+                    "A required scoped retrieval was not attempted."
+                    if exc.code == "required_tool_missing"
+                    else "A role could not produce a valid structured result."
+                ),
             )
         except EditorialServiceError:
             error = SanitizedError(
@@ -526,6 +580,96 @@ class EditorialWorkflowRunner:
             version.document_version_id,
         )
 
+    def _handoff_critic_acceptance(
+        self,
+        *,
+        context: WorkflowRequestContext,
+        round_number: int,
+        result: CriticResult,
+        version: DocumentVersionRecord,
+    ) -> None:
+        handoff = AgentHandoff(
+            handoff_id=HandoffId(self._id_factory("handoff")),
+            run_id=context.run_id,
+            sequence=self._next_handoff_sequence(),
+            round_number=round_number,
+            from_agent=AgentRole.CRITIC,
+            to_agent=AgentRole.ORCHESTRATOR,
+            status=OutcomeStatus.COMPLETE,
+            payload={
+                "verdict": result.verdict.value,
+                "reviewed_document_version_id": version.document_version_id,
+                "issue_count": 0,
+                "issue_categories": [],
+                "summary": result.summary,
+            },
+            document_version_id=version.document_version_id,
+            created_at=self._now(),
+        )
+        self._repository.append_handoff(
+            user_id=context.user_id,
+            document_id=context.document_id,
+            handoff=handoff,
+        )
+        self._emit(
+            EventType.HANDOFF_CREATED,
+            AgentRole.CRITIC,
+            {"handoff_id": handoff.handoff_id},
+            version.document_version_id,
+        )
+
+    def _validate_critic_grounding(
+        self,
+        *,
+        result: CriticResult,
+        version: DocumentVersionRecord,
+    ) -> None:
+        for issue in result.issues:
+            if issue.issue_type is not CriticIssueType.PRESENT_CONTENT:
+                continue
+            excerpt = (issue.draft_excerpt or "").strip()
+            if excerpt and excerpt in version.content:
+                continue
+            self._emit(
+                EventType.CRITIC_GROUNDING_REJECTED,
+                AgentRole.ORCHESTRATOR,
+                {
+                    "reviewed_document_version_id": version.document_version_id,
+                    "issue_category": issue.category,
+                    "reason": "draft_excerpt_absent",
+                },
+                version.document_version_id,
+            )
+            raise CriticGroundingError("Critic draft excerpt is not grounded.")
+
+    def _record_critic_review(
+        self,
+        *,
+        context: WorkflowRequestContext,
+        result: CriticResult,
+        version: DocumentVersionRecord,
+        round_number: int,
+    ) -> None:
+        del context
+        self._emit(
+            EventType.CRITIC_REVIEW_COMPLETED,
+            AgentRole.CRITIC,
+            {
+                "verdict": result.verdict.value,
+                "reviewed_document_version_id": version.document_version_id,
+                "round_number": round_number,
+                "issue_count": len(result.issues),
+                "issue_categories": [issue.category for issue in result.issues],
+                "grounded_excerpts": [
+                    issue.draft_excerpt
+                    for issue in result.issues
+                    if issue.draft_excerpt is not None
+                ],
+                "summary": result.summary,
+            },
+            version.document_version_id,
+        )
+
     def _request_approval(
         self,
         version: DocumentVersionRecord,
@@ -562,7 +706,10 @@ class EditorialWorkflowRunner:
                 approved = self._approval_gate.request(call)
                 reason = "approved" if approved else "declined"
             except Exception as exc:
-                raise RoleAgentError("Human approval could not be obtained.") from exc
+                raise RoleAgentError(
+                    "Human approval could not be obtained.",
+                    code="approval",
+                ) from exc
         self._emit(
             EventType.APPROVAL_RESOLVED,
             AgentRole.HUMAN,
@@ -641,6 +788,8 @@ class EditorialWorkflowRunner:
                 },
             )
         elif call.name == "retrieve_shared_comments":
+            if role is AgentRole.EXECUTOR:
+                self._executor_retrieved_shared_comments = True
             comment_ids = self._result_identifiers(
                 data,
                 collection="comments",

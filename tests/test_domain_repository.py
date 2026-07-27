@@ -126,7 +126,10 @@ def test_stage2_database_upgrades_to_stage3_event_schema(
     database.initialize()
 
     with database.connect() as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert (
+            connection.execute("PRAGMA user_version").fetchone()[0]
+            == SCHEMA_VERSION
+        )
         sql = connection.execute(
             "SELECT sql FROM sqlite_master WHERE name = 'run_events'"
         ).fetchone()[0]

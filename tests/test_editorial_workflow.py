@@ -86,13 +86,43 @@ def critic_revise_json(required_change: str = "Remove the unsupported claim.") -
                 "verdict": "revise",
                 "issues": [
                     {
+                        "issue_type": "style",
                         "category": "unsupported_claim",
                         "summary": "The claim is not grounded.",
-                        "evidence": "The source contains no supporting evidence.",
+                        "source_evidence": (
+                            "The source contains no supporting evidence."
+                        ),
                         "required_change": required_change,
                     }
                 ],
                 "summary": "One meaningful issue requires revision.",
+            },
+        }
+    )
+
+
+def grounded_critic_revise_json(
+    excerpt: str,
+    *,
+    category: str = "unsupported_claim",
+    required_change: str = "Remove the unsupported claim.",
+) -> str:
+    return json.dumps(
+        {
+            "status": "revise",
+            "result": {
+                "verdict": "revise",
+                "issues": [
+                    {
+                        "issue_type": "present_content",
+                        "category": category,
+                        "summary": "The quoted draft wording requires revision.",
+                        "draft_excerpt": excerpt,
+                        "source_evidence": "The source does not support this wording.",
+                        "required_change": required_change,
+                    }
+                ],
+                "summary": "One grounded issue requires revision.",
             },
         }
     )
@@ -131,6 +161,7 @@ def setup_workflow(
     max_revisions: int = 2,
     request: str = "Create a LinkedIn post from the source.",
 ):
+    executor_responses = _with_required_memory_checks(executor_responses)
     if approval_gate is None:
         approval_gate = AlwaysApproveGate()
     database = SQLiteDatabase(tmp_path / "domain.sqlite3")
@@ -187,6 +218,36 @@ def setup_workflow(
     return runner, repository, memory, rules, context, source
 
 
+def _with_required_memory_checks(
+    responses: list[ModelResponse],
+) -> list[ModelResponse]:
+    """Make legacy workflow fixtures satisfy the mandatory pull policy."""
+
+    normalized: list[ModelResponse] = []
+    retrieved = False
+    for item in responses:
+        if any(call.name == "retrieve_private_facts" for call in item.tool_calls):
+            retrieved = True
+        if not item.tool_calls:
+            if not retrieved:
+                normalized.append(
+                    ModelResponse(
+                        "",
+                        (
+                            ToolCall(
+                                f"memory_{len(normalized)}",
+                                "retrieve_private_facts",
+                                {"cue": "LinkedIn format and style preferences"},
+                            ),
+                        ),
+                        f"memory_interaction_{len(normalized)}",
+                    )
+                )
+            retrieved = False
+        normalized.append(item)
+    return normalized
+
+
 def response(text: str) -> ModelResponse:
     return ModelResponse(text, (), "interaction")
 
@@ -235,9 +296,12 @@ def test_happy_workflow_persists_trace_and_valid_bundle(tmp_path: Path) -> None:
         user_id=context.user_id,
         document_id=context.document_id,
     )
-    assert len(handoffs) == 1
+    assert len(handoffs) == 2
     assert handoffs[0].from_agent is AgentRole.EXECUTOR
     assert handoffs[0].document_version_id == final.document_version_id
+    assert handoffs[1].from_agent is AgentRole.CRITIC
+    assert handoffs[1].to_agent is AgentRole.ORCHESTRATOR
+    assert handoffs[1].payload["verdict"] == "accept"
 
     operating = rules.load(kind=RuleKind.GLOBAL_OPERATING_RULES)
     critic = rules.load(kind=RuleKind.CRITIC_DELEGATION_BRIEF)
@@ -257,7 +321,36 @@ def test_happy_workflow_persists_trace_and_valid_bundle(tmp_path: Path) -> None:
         ),
     )
     assert bundle.run.status is RunStatus.COMPLETED
+    assert [item.document_version_id for item in bundle.document_versions] == [
+        source.document_version_id,
+        final.document_version_id,
+    ]
     assert bundle.document_versions[-1].document_version_id == final.document_version_id
+
+
+def test_executor_must_check_private_memory_before_linkedin_draft(
+    tmp_path: Path,
+) -> None:
+    runner, repository, _, _, context, _ = setup_workflow(
+        tmp_path,
+        executor_responses=[
+            response(executor_json("This scripted response is replaced."))
+        ],
+        critic_responses=[response(critic_accept_json())],
+    )
+    runner._executor_model = FakeModelClient(
+        [response(executor_json("Relay is open source."))]
+    )
+
+    result = runner.run(context)
+
+    assert result.status is RunStatus.FAILED
+    assert result.error.code == "required_tool_missing"
+    assert result.revision_count == 0
+    assert repository.get_latest_document_version(
+        user_id=context.user_id,
+        document_id=context.document_id,
+    ).version_number == 1
 
 
 def test_revision_workflow_preserves_versions_and_handoffs(tmp_path: Path) -> None:
@@ -297,9 +390,89 @@ def test_revision_workflow_preserves_versions_and_handoffs(tmp_path: Path) -> No
         user_id=context.user_id,
         document_id=context.document_id,
     )
-    assert [handoff.sequence for handoff in handoffs] == [1, 2, 3]
-    assert [handoff.round_number for handoff in handoffs] == [0, 1, 1]
+    assert [handoff.sequence for handoff in handoffs] == [1, 2, 3, 4]
+    assert [handoff.round_number for handoff in handoffs] == [0, 1, 1, 1]
     assert handoffs[1].from_agent is AgentRole.CRITIC
+    assert handoffs[-1].payload["verdict"] == "accept"
+
+
+def test_critic_cannot_consume_revision_for_excerpt_absent_from_draft(
+    tmp_path: Path,
+) -> None:
+    runner, repository, _, _, context, _ = setup_workflow(
+        tmp_path,
+        executor_responses=[
+            response(executor_json("Relay is open source for Python teams."))
+        ],
+        critic_responses=[
+            response(
+                grounded_critic_revise_json("widely adopted worldwide")
+            )
+        ],
+        request=(
+            "Write a post and say Relay is already widely adopted worldwide."
+        ),
+    )
+
+    result = runner.run(context)
+
+    assert result.status is RunStatus.FAILED
+    assert result.error.code == "critic_grounding"
+    assert result.revision_count == 0
+    assert repository.get_latest_document_version(
+        user_id=context.user_id,
+        document_id=context.document_id,
+    ).version_number == 2
+    events = repository.list_run_events(
+        run_id=context.run_id,
+        user_id=context.user_id,
+        document_id=context.document_id,
+    )
+    assert EventType.CRITIC_GROUNDING_REJECTED in {
+        event.event_type for event in events
+    }
+    assert EventType.REVISION_REQUESTED not in {
+        event.event_type for event in events
+    }
+
+
+def test_grounded_critic_excerpt_allows_one_revision(tmp_path: Path) -> None:
+    runner, repository, _, _, context, _ = setup_workflow(
+        tmp_path,
+        executor_responses=[
+            response(
+                executor_json(
+                    "Relay is open source and widely adopted worldwide."
+                )
+            ),
+            response(executor_json("Relay is open source for Python teams.")),
+        ],
+        critic_responses=[
+            response(
+                grounded_critic_revise_json("widely adopted worldwide")
+            ),
+            response(critic_accept_json()),
+        ],
+    )
+
+    result = runner.run(context)
+
+    assert result.succeeded is True
+    assert result.revision_count == 1
+    events = repository.list_run_events(
+        run_id=context.run_id,
+        user_id=context.user_id,
+        document_id=context.document_id,
+    )
+    review = next(
+        event
+        for event in events
+        if event.event_type is EventType.CRITIC_REVIEW_COMPLETED
+        and event.payload["verdict"] == "revise"
+    )
+    assert review.payload["grounded_excerpts"] == [
+        "widely adopted worldwide"
+    ]
 
 
 def test_revision_limit_blocks_without_extra_executor_round(
@@ -375,7 +548,7 @@ def test_malformed_executor_or_critic_output_fails_safely(
     result = runner.run(context)
 
     assert result.status is RunStatus.FAILED
-    assert result.error.code == "invalid_role_response"
+    assert result.error.code == "structured_output"
     assert "internal detail" not in result.error.message
     assert repository.get_workflow_run(
         run_id=context.run_id,
@@ -441,7 +614,7 @@ def test_model_and_persistence_failures_are_terminal(
     )
     model_result = model_runner.run(model_context)
     assert model_result.status is RunStatus.FAILED
-    assert model_result.error.code == "invalid_role_response"
+    assert model_result.error.code == "model_request"
 
     runner, repository, _, _, context, _ = setup_workflow(
         tmp_path / "persistence",
@@ -486,5 +659,5 @@ def test_retrieval_tool_failure_is_terminal_and_sanitized(
     result = runner.run(context)
 
     assert result.status is RunStatus.FAILED
-    assert result.error.code == "invalid_role_response"
+    assert result.error.code == "retrieval"
     assert "malformed private content" not in result.error.message

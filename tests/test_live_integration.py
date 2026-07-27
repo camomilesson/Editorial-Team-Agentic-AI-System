@@ -13,12 +13,17 @@ from editorial_agent.approval import (
 )
 from editorial_agent.contracts.identity import UserId
 from editorial_agent.live_integration import (
+    LEGITIMATE_COMMENT,
     MEMORY_SENTENCE,
+    SHARED_COMMENTS_SOURCE,
+    SHARED_PREFERRED_TERM,
+    SHARED_REPLACED_TERM,
     ApprovalMode,
     LiveEditorialHarness,
     ScenarioAssertion,
     ScenarioResult,
     ScenarioStatus,
+    _print_result,
     approval_gate_for,
     compose_runtime,
     main,
@@ -85,9 +90,11 @@ def critic_revise() -> ModelResponse:
                 "verdict": "revise",
                 "issues": [
                     {
+                        "issue_type": "present_content",
                         "category": "unsupported_claim",
                         "summary": "Adoption is unsupported.",
-                        "evidence": "The source gives no adoption evidence.",
+                        "draft_excerpt": "widely adopted worldwide",
+                        "source_evidence": "The source gives no adoption evidence.",
                         "required_change": "Remove the worldwide adoption claim.",
                     }
                 ],
@@ -102,6 +109,13 @@ def tool_call(name: str, arguments: dict[str, object]) -> ModelResponse:
         text="",
         tool_calls=(ToolCall(f"call_{name}", name, arguments),),
         continuation_token=f"interaction_{name}",
+    )
+
+
+def memory_check() -> ModelResponse:
+    return tool_call(
+        "retrieve_private_facts",
+        {"cue": "LinkedIn format style structure and closing preferences"},
     )
 
 
@@ -186,7 +200,12 @@ def test_fake_basic_scenario_writes_evidence(tmp_path: Path) -> None:
         tmp_path,
         ClientQueue(
             [
-                [executor_response("Wayfinder is now open source for Flutter teams.")],
+                [
+                    memory_check(),
+                    executor_response(
+                        "Relay is now open source for multi-team Python applications."
+                    ),
+                ],
                 [critic_accept()],
             ]
         ),
@@ -204,6 +223,7 @@ def test_fake_memory_scenario_saves_retrieves_and_isolates(tmp_path: Path) -> No
     clients = ClientQueue(
         [
             [
+                memory_check(),
                 executor_response(
                     f"Wayfinder is open source. {MEMORY_SENTENCE}",
                     save=True,
@@ -215,18 +235,12 @@ def test_fake_memory_scenario_saves_retrieves_and_isolates(tmp_path: Path) -> No
             ],
             [critic_accept()],
             [
-                tool_call(
-                    "retrieve_private_facts",
-                    {"cue": "executive LinkedIn post ending preference"},
-                ),
+                memory_check(),
                 executor_response(f"Wayfinder has a new update. {MEMORY_SENTENCE}"),
             ],
             [critic_accept()],
             [
-                tool_call(
-                    "retrieve_private_facts",
-                    {"cue": "executive LinkedIn post ending preference"},
-                ),
+                memory_check(),
                 executor_response("Wayfinder has a new update for Flutter teams."),
             ],
             [critic_accept()],
@@ -243,12 +257,13 @@ def test_fake_shared_comment_scenario_checks_security(tmp_path: Path) -> None:
     clients = ClientQueue(
         [
             [
+                memory_check(),
                 tool_call("retrieve_shared_comments", {}),
                 executor_response(
-                    "Wayfinder supports structured navigation schemes for Flutter."
+                    "Relay connects workflow modules through a shared execution layer."
                 ),
             ],
-            [critic_accept()],
+            [tool_call("retrieve_shared_comments", {}), critic_accept()],
         ]
     )
 
@@ -259,6 +274,9 @@ def test_fake_shared_comment_scenario_checks_security(tmp_path: Path) -> None:
         "comments_remained_untrusted",
         "private_canary_absent",
     }
+    assert SHARED_REPLACED_TERM in SHARED_COMMENTS_SOURCE
+    assert SHARED_REPLACED_TERM in LEGITIMATE_COMMENT
+    assert SHARED_PREFERRED_TERM in LEGITIMATE_COMMENT
 
 
 def test_fake_unsupported_claim_scenario_preserves_revisions(
@@ -267,7 +285,9 @@ def test_fake_unsupported_claim_scenario_preserves_revisions(
     clients = ClientQueue(
         [
             [
+                memory_check(),
                 executor_response("Wayfinder is widely adopted worldwide."),
+                memory_check(),
                 executor_response(
                     "Wayfinder is open source for multi-team Flutter applications."
                 ),
@@ -286,7 +306,10 @@ def test_fake_unsupported_claim_scenario_preserves_revisions(
 def test_fake_approval_decline_scenario_is_blocked(tmp_path: Path) -> None:
     clients = ClientQueue(
         [
-            [executor_response("Wayfinder is open source for Flutter teams.")],
+            [
+                memory_check(),
+                executor_response("Relay is open source for Python teams."),
+            ],
             [critic_accept()],
         ]
     )
@@ -370,3 +393,89 @@ def test_command_exit_codes_for_failed_and_inconclusive(
 
     assert failed == 1
     assert inconclusive == 2
+
+
+@pytest.mark.parametrize(
+    ("scenario", "failed_assertion", "category"),
+    [
+        ("memory", "user_a_fact_retrieved", "retrieval"),
+        ("memory", "user_a_preference_applied", "memory_decision"),
+        ("shared-comments", "fixture_relevant", "fixture_invalid"),
+        (
+            "shared-comments",
+            "legitimate_terminology_applied",
+            "comment_application",
+        ),
+        ("shared-comments", "private_canary_absent", "security_assertion"),
+        ("unsupported-claim", "workflow_completed", "critic_quality"),
+    ],
+)
+def test_failure_categories_match_failed_property(
+    scenario: str,
+    failed_assertion: str,
+    category: str,
+) -> None:
+    result = ScenarioResult(
+        scenario=scenario,
+        status=ScenarioStatus.PASSED,
+        assertions=[ScenarioAssertion(failed_assertion, False)],
+    )
+
+    LiveEditorialHarness._finalize_status(result)
+
+    assert result.status is ScenarioStatus.FAILED
+    assert result.failure_category == category
+
+
+def test_memory_terminal_output_compares_a2_and_b1_without_memory_dump(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    result = ScenarioResult(
+        scenario="memory",
+        status=ScenarioStatus.PASSED,
+        run_ids=["a1", "a2", "b1"],
+        final_posts={
+            "a1": "First post.",
+            "a2": f"Second post. {MEMORY_SENTENCE}",
+            "b1": "Comparison post.",
+        },
+        assertions=[
+            ScenarioAssertion("user_a_fact_saved", True, ("fact_1",)),
+            ScenarioAssertion("user_a_fact_retrieved", True, ("fact_1",)),
+            ScenarioAssertion("user_a_preference_applied", True),
+            ScenarioAssertion("user_b_isolated", True),
+        ],
+    )
+
+    _print_result(result, "fake")
+    output = capsys.readouterr().out
+
+    assert "User A second-run final post:" in output
+    assert "User B comparison final post:" in output
+    assert "A2 retrieval evidence: ['fact_1']" in output
+    assert "private-memory" not in output
+
+
+def test_unsupported_terminal_output_includes_grounding_data(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    result = ScenarioResult(
+        scenario="unsupported-claim",
+        status=ScenarioStatus.PASSED,
+        notes=[
+            "Reviewed version IDs: ['version_1'].",
+            "Critic issue categories: ['unsupported_claim'].",
+            "Grounded draft excerpts: ['widely adopted worldwide'].",
+            "Terminal reason: completed.",
+        ],
+        assertions=[
+            ScenarioAssertion("unsupported_claim_absent", True),
+        ],
+    )
+
+    _print_result(result, "fake")
+    output = capsys.readouterr().out
+
+    assert "Reviewed version IDs" in output
+    assert "Grounded draft excerpts" in output
+    assert "Unsupported phrase absent: yes" in output

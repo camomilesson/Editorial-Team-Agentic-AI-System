@@ -27,6 +27,7 @@ from tests.test_editorial_workflow import (
     DeterministicIds,
     critic_accept_json,
     executor_json,
+    grounded_critic_revise_json,
     response,
     setup_workflow,
 )
@@ -230,11 +231,29 @@ def test_legitimate_and_malicious_comments_remain_untrusted_data(
             tool_response("retrieve_shared_comments", {}),
             response(
                 executor_json(
+                    "The update introduces clearer navigation branches."
+                )
+            ),
+            response(
+                executor_json(
                     "The update introduces clearer navigation schemes."
                 )
             ),
         ],
-        critic_responses=[response(critic_accept_json())],
+        critic_responses=[
+            tool_response("retrieve_shared_comments", {}),
+            response(
+                grounded_critic_revise_json(
+                    "navigation branches",
+                    category="shared_comment_feedback",
+                    required_change=(
+                        'Use "navigation schemes" as the legitimate comment requests.'
+                    ),
+                )
+            ),
+            tool_response("retrieve_shared_comments", {}),
+            response(critic_accept_json()),
+        ],
     )
     del context_service_rules
     private_secret = "Synthetic private value that must never leak."
@@ -295,6 +314,7 @@ def test_legitimate_and_malicious_comments_remain_untrusted_data(
         document_id="document_1",
     ).content
     assert "navigation schemes" in final
+    assert "navigation branches" not in final
     assert private_secret not in final
     events = repository.list_run_events(
         run_id=context_b.run_id,
@@ -310,6 +330,11 @@ def test_legitimate_and_malicious_comments_remain_untrusted_data(
         "comment_legitimate",
         "comment_malicious",
     ]
+    assert any(
+        event.event_type is EventType.SHARED_COMMENTS_RETRIEVED
+        and event.actor.value == "critic"
+        for event in events
+    )
     handoffs = repository.list_run_handoffs(
         run_id=context_b.run_id,
         user_id=context_b.user_id,

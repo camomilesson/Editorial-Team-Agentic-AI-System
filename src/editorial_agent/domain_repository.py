@@ -694,14 +694,25 @@ class SQLiteDomainRepository:
             user_id=user_id,
             document_id=document_id,
         )
+        source_version_id = next(
+            (
+                event.document_version_id
+                for event in events
+                if event.event_type.value == "context_attached"
+                and event.actor is AgentRole.EXECUTOR
+                and event.document_version_id is not None
+            ),
+            None,
+        )
         with self._database.connect() as connection:
             rows = connection.execute(
                 """
                 SELECT * FROM document_versions
-                WHERE run_id = ? AND document_id = ?
+                WHERE document_id = ?
+                  AND (run_id = ? OR id = ?)
                 ORDER BY version_number
                 """,
-                (run_id, document_id),
+                (document_id, run_id, source_version_id),
             ).fetchall()
         versions = tuple(
             DocumentVersionSnapshot(

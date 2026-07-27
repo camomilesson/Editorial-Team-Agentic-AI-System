@@ -128,11 +128,13 @@ def test_valid_critic_revision_builds_structured_feedback() -> None:
             {
                 "verdict": "revise",
                 "issues": [
-                    {
-                        "category": "unsupported_claim",
-                        "summary": "Adoption is unsupported.",
-                        "evidence": "The source has no adoption data.",
-                        "required_change": "Remove the adoption claim.",
+                        {
+                            "issue_type": "present_content",
+                            "category": "unsupported_claim",
+                            "summary": "Adoption is unsupported.",
+                            "draft_excerpt": "widely adopted",
+                            "source_evidence": "The source has no adoption data.",
+                            "required_change": "Remove the adoption claim.",
                     }
                 ],
                 "summary": "One factual issue requires revision.",
@@ -142,6 +144,30 @@ def test_valid_critic_revision_builds_structured_feedback() -> None:
 
     assert outcome.status is OutcomeStatus.REVISE
     assert outcome.revision.required_changes == ("Remove the adoption claim.",)
+
+
+def test_critic_omission_issue_does_not_require_draft_excerpt() -> None:
+    outcome = parse_critic_outcome(
+        envelope(
+            "revise",
+            {
+                "verdict": "revise",
+                "issues": [
+                    {
+                        "issue_type": "missing_required_content",
+                        "category": "request_coverage",
+                        "summary": "A supported license detail is missing.",
+                        "source_evidence": "The source specifies Apache 2.0.",
+                        "required_change": "Mention the Apache 2.0 license.",
+                    }
+                ],
+                "summary": "One supported omission requires revision.",
+            },
+        )
+    )
+
+    assert outcome.revision is not None
+    assert outcome.result["issues"][0]["draft_excerpt"] is None
 
 
 def test_critic_revision_without_issues_is_rejected() -> None:
@@ -162,4 +188,3 @@ def test_critic_revision_without_issues_is_rejected() -> None:
 def test_malformed_or_unknown_role_output_is_rejected(text: str) -> None:
     with pytest.raises(RoleOutputError):
         parse_executor_outcome(text)
-

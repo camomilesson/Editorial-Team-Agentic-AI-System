@@ -11,12 +11,16 @@ original single-agent alpha. The existing CLI still uses the alpha.
 1. creates the authorized persistent run and `run_started` event;
 2. builds pushed Executor context from the source, trusted operating rules,
    Executor brief, workflow identity, and trust-boundary instructions;
-3. lets the Executor call current-user/current-document retrieval tools;
+3. requires the Executor to check current-user private memory through the
+   scoped retrieval tool before every LinkedIn draft or revision, then lets it
+   call other relevant current-user/current-document retrieval tools;
 4. strictly parses the Executor's structured draft and memory decision;
 5. saves an approved durable fact decision under trusted application identity;
 6. stores the draft as a new immutable SQLite document version;
 7. appends an Executor-to-Critic handoff referencing that exact version;
-8. runs the Critic with source, candidate draft, rules, brief, and budget;
+8. runs the Critic with source, exact candidate draft, rules, brief, and
+   budget; when the Executor consulted shared comments, the Critic must
+   retrieve them independently;
 9. either accepts, blocks, fails, or sends structured issues back to Executor;
 10. repeats bounded revisions and immutable version creation when required;
 11. requests explicit human approval immediately after Critic acceptance;
@@ -75,8 +79,12 @@ are represented by explicit no-save decisions. Events record whether a save
 was chosen and the generated fact reference, never the private fact content.
 
 The Critic returns `accept` with no issues or `revise` with concrete category,
-summary, evidence, and required change fields. Control flow uses status and
-verdict enums rather than interpreting prose.
+summary, issue type, source evidence, required change, and an exact
+`draft_excerpt` for present-content allegations. Omission issues need no
+excerpt. Before a revision can consume budget, the orchestrator verifies that
+each present-content excerpt occurs in the exact reviewed version. Invalid
+grounding emits `critic_grounding_rejected`, fails explicitly, and creates no
+revision version.
 
 ## Revision and approval rules
 
@@ -92,6 +100,11 @@ Critic acceptance never finalizes a draft itself. The orchestrator records an
 approval request for the exact version and calls the configured `ApprovalGate`
 immediately before finalization. Approval completes the run. Decline blocks
 it. Missing or failing approval cannot produce a successful result.
+
+Every valid Critic verdict emits `critic_review_completed`. Acceptance also
+creates a Critic-to-Orchestrator handoff; revision continues to use the
+Critic-to-Executor handoff. These records identify the reviewed version,
+verdict, issue count/categories, grounded excerpts, and summary.
 
 ## Trace and redaction policy
 
@@ -117,10 +130,13 @@ databases to version 2.
 
 ## Monitor bundle compatibility
 
-Successful terminal runs retain ordered events, handoffs, and run-created
-versions. The repository can combine them with trusted rule snapshots into
-the existing `CompletedRunBundle`. Stage 3 validates this integration but does
-not implement or invoke Monitor judgment.
+Successful terminal runs retain ordered events, handoffs, the original source
+snapshot, and every run-created version. The repository combines these with
+trusted rule snapshots into the existing `CompletedRunBundle`. The bundle
+schema remains version 1 and backward-compatible; consumers such as Nina's
+future Monitor should now expect the source as the first document snapshot and
+can read explicit Critic verdict records. This stage does not implement or
+invoke Monitor judgment.
 
 ## Testing and deferred work
 

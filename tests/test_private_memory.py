@@ -80,6 +80,33 @@ def test_private_fact_ranking_and_limit_are_deterministic(tmp_path: Path) -> Non
     ) == (first, second)
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        "executive LinkedIn style",
+        "LinkedIn post formatting",
+        "LinkedIn closing preference",
+        "recurring LinkedIn ending",
+    ],
+)
+def test_linkedin_closing_fact_matches_reasonable_cue_variants(
+    tmp_path: Path,
+    query: str,
+) -> None:
+    store = JsonPrivateFactStore(tmp_path)
+    closing = fact(
+        "fact_closing",
+        "user_a",
+        "LinkedIn post footer closing ending format executive preference",
+        "Use the user's durable closing sentence.",
+    )
+    store.save_fact(user_id=UserId("user_a"), fact=closing)
+
+    assert store.retrieve_facts(user_id=UserId("user_a"), cue=query) == (
+        closing,
+    )
+
+
 def test_mismatched_user_scope_is_rejected_without_content_leak(
     tmp_path: Path,
 ) -> None:
