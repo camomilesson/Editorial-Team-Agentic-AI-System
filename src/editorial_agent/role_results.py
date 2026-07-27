@@ -141,6 +141,12 @@ class CriticIssueType(StrEnum):
     STYLE = "style"
 
 
+class RuleCompatibility(StrEnum):
+    """Critic declaration that an omitted requirement respects trusted rules."""
+
+    SUPPORTED = "supported"
+
+
 @dataclass(frozen=True)
 class CriticIssue:
     """One concrete rubric issue requiring a change."""
@@ -151,6 +157,9 @@ class CriticIssue:
     source_evidence: str
     required_change: str
     draft_excerpt: str | None = None
+    request_evidence: str | None = None
+    required_content: str | None = None
+    rule_compatibility: RuleCompatibility | None = None
 
     def __post_init__(self) -> None:
         require_non_blank(self.category, "issue.category")
@@ -161,6 +170,18 @@ class CriticIssue:
             if self.draft_excerpt is None:
                 raise ValueError("present-content issues require draft_excerpt")
             require_non_blank(self.draft_excerpt, "issue.draft_excerpt")
+        elif self.issue_type is CriticIssueType.MISSING_REQUIRED_CONTENT:
+            if (
+                self.request_evidence is None
+                or self.required_content is None
+                or self.rule_compatibility is None
+            ):
+                raise ValueError(
+                    "missing-content issues require request evidence, "
+                    "required content, and rule compatibility"
+                )
+            require_non_blank(self.request_evidence, "issue.request_evidence")
+            require_non_blank(self.required_content, "issue.required_content")
         elif self.draft_excerpt is not None:
             require_non_blank(self.draft_excerpt, "issue.draft_excerpt")
 
@@ -172,7 +193,21 @@ class CriticIssue:
             "draft_excerpt": self.draft_excerpt,
             "source_evidence": self.source_evidence,
             "required_change": self.required_change,
+            "request_evidence": self.request_evidence,
+            "required_content": self.required_content,
+            "rule_compatibility": (
+                self.rule_compatibility.value
+                if self.rule_compatibility is not None
+                else None
+            ),
         }
+
+    def revision_instruction(self) -> str:
+        """Return feedback constrained to validated source-backed content."""
+
+        if self.issue_type is CriticIssueType.MISSING_REQUIRED_CONTENT:
+            return f"Add the source-backed content: {self.required_content}"
+        return self.required_change
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> CriticIssue:
@@ -185,7 +220,12 @@ class CriticIssue:
                 "source_evidence",
                 "required_change",
             },
-            optional={"draft_excerpt"},
+            optional={
+                "draft_excerpt",
+                "request_evidence",
+                "required_content",
+                "rule_compatibility",
+            },
             field_name="Critic issue",
         )
         try:
@@ -196,6 +236,13 @@ class CriticIssue:
                 source_evidence=value["source_evidence"],
                 required_change=value["required_change"],
                 draft_excerpt=value.get("draft_excerpt"),
+                request_evidence=value.get("request_evidence"),
+                required_content=value.get("required_content"),
+                rule_compatibility=(
+                    RuleCompatibility(value["rule_compatibility"])
+                    if value.get("rule_compatibility") is not None
+                    else None
+                ),
             )
         except (TypeError, ValueError) as exc:
             raise RoleOutputError("Critic issue is invalid") from exc
@@ -222,6 +269,14 @@ class CriticResult:
             "issues": [issue.to_dict() for issue in self.issues],
             "summary": self.summary,
         }
+
+    def to_executor_feedback_dict(self) -> dict[str, Any]:
+        """Return Critic feedback with trusted omission instructions."""
+
+        value = self.to_dict()
+        for issue_value, issue in zip(value["issues"], self.issues, strict=True):
+            issue_value["required_change"] = issue.revision_instruction()
+        return value
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> CriticResult:
@@ -288,7 +343,7 @@ def parse_critic_outcome(text: str) -> AgentOutcome:
         revision = RevisionFeedback(
             summary=result.summary,
             required_changes=tuple(
-                issue.required_change for issue in result.issues
+                issue.revision_instruction() for issue in result.issues
             ),
         )
         return AgentOutcome(

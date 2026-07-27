@@ -613,6 +613,20 @@ class LiveEditorialHarness:
             for event in review_events
             for excerpt in event.payload.get("grounded_excerpts", [])
         ]
+        issue_types = [
+            str(issue_type)
+            for event in review_events
+            for issue_type in event.payload.get("issue_types", [])
+        ]
+        source_evidence = [
+            str(evidence)
+            for event in review_events
+            for evidence in event.payload.get("source_evidence", [])
+        ]
+        invalid_feedback_rejected = any(
+            event.event_type is EventType.CRITIC_GROUNDING_REJECTED
+            for event in self._events(runtime, run)
+        )
         reviewed_ids = [
             str(item.document_version_id)
             for item in handoffs
@@ -653,7 +667,10 @@ class LiveEditorialHarness:
                 f"Revision occurred: {run.result.revision_count > 0}.",
                 f"Reviewed version IDs: {reviewed_ids}.",
                 f"Critic issue categories: {categories}.",
+                f"Critic issue types: {issue_types}.",
                 f"Grounded draft excerpts: {grounded_excerpts}.",
+                f"Missing-content source evidence: {source_evidence}.",
+                f"Invalid Critic feedback rejected: {invalid_feedback_rejected}.",
                 "Terminal reason: "
                 + (
                     run.result.blocked.code
@@ -1113,7 +1130,10 @@ def _print_result(result: ScenarioResult, model_name: str) -> None:
                 (
                     "Reviewed version IDs:",
                     "Critic issue categories:",
+                    "Critic issue types:",
                     "Grounded draft excerpts:",
+                    "Missing-content source evidence:",
+                    "Invalid Critic feedback rejected:",
                     "Terminal reason:",
                 )
             ):

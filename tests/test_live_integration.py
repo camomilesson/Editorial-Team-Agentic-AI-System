@@ -303,6 +303,34 @@ def test_fake_unsupported_claim_scenario_preserves_revisions(
     assert "unsupported_claim" in " ".join(result.notes)
 
 
+def test_fake_unsupported_claim_scenario_accepts_correct_initial_omission(
+    tmp_path: Path,
+) -> None:
+    clients = ClientQueue(
+        [
+            [
+                memory_check(),
+                executor_response(
+                    "Relay is open source for multi-team Python applications."
+                ),
+            ],
+            [critic_accept()],
+        ]
+    )
+
+    result = harness(tmp_path, clients).run_scenario("unsupported-claim")
+
+    assert result.status is ScenarioStatus.PASSED
+    assert next(iter(result.revision_counts.values())) == 0
+    assert all(
+        phrase not in next(iter(result.final_posts.values())).casefold()
+        for phrase in (
+            "widely adopted worldwide",
+            "global market leader",
+        )
+    )
+
+
 def test_fake_approval_decline_scenario_is_blocked(tmp_path: Path) -> None:
     clients = ClientQueue(
         [
@@ -465,7 +493,10 @@ def test_unsupported_terminal_output_includes_grounding_data(
         notes=[
             "Reviewed version IDs: ['version_1'].",
             "Critic issue categories: ['unsupported_claim'].",
+            "Critic issue types: ['present_content'].",
             "Grounded draft excerpts: ['widely adopted worldwide'].",
+            "Missing-content source evidence: [].",
+            "Invalid Critic feedback rejected: False.",
             "Terminal reason: completed.",
         ],
         assertions=[
@@ -478,4 +509,6 @@ def test_unsupported_terminal_output_includes_grounding_data(
 
     assert "Reviewed version IDs" in output
     assert "Grounded draft excerpts" in output
+    assert "Critic issue types" in output
+    assert "Invalid Critic feedback rejected" in output
     assert "Unsupported phrase absent: yes" in output

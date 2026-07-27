@@ -128,6 +128,36 @@ def grounded_critic_revise_json(
     )
 
 
+def missing_content_critic_revise_json(
+    *,
+    request_evidence: str,
+    source_evidence: str,
+    required_content: str,
+    required_change: str,
+) -> str:
+    return json.dumps(
+        {
+            "status": "revise",
+            "result": {
+                "verdict": "revise",
+                "issues": [
+                    {
+                        "issue_type": "missing_required_content",
+                        "category": "request_coverage",
+                        "summary": "Valid source-backed content is missing.",
+                        "source_evidence": source_evidence,
+                        "required_change": required_change,
+                        "request_evidence": request_evidence,
+                        "required_content": required_content,
+                        "rule_compatibility": "supported",
+                    }
+                ],
+                "summary": "One source-backed omission requires revision.",
+            },
+        }
+    )
+
+
 class DeterministicIds:
     def __init__(self) -> None:
         self.counts: dict[str, int] = {}
@@ -423,6 +453,7 @@ def test_critic_cannot_consume_revision_for_excerpt_absent_from_draft(
         user_id=context.user_id,
         document_id=context.document_id,
     ).version_number == 2
+    assert len(runner._executor_model.requests) == 2
     events = repository.list_run_events(
         run_id=context.run_id,
         user_id=context.user_id,
@@ -473,6 +504,93 @@ def test_grounded_critic_excerpt_allows_one_revision(tmp_path: Path) -> None:
     assert review.payload["grounded_excerpts"] == [
         "widely adopted worldwide"
     ]
+
+
+def test_valid_source_backed_omission_allows_revision(tmp_path: Path) -> None:
+    request = "Mention the route-planning update."
+    runner, repository, _, _, context, _ = setup_workflow(
+        tmp_path,
+        executor_responses=[
+            response(executor_json("The company released an update.")),
+            response(
+                executor_json(
+                    "The company released a route-planning update."
+                )
+            ),
+        ],
+        critic_responses=[
+            response(
+                missing_content_critic_revise_json(
+                    request_evidence="Mention the route-planning update.",
+                    source_evidence=(
+                        "The company released a route-planning update."
+                    ),
+                    required_content="route-planning update",
+                    required_change="Mention the route-planning update.",
+                )
+            ),
+            response(critic_accept_json()),
+        ],
+        request=request,
+    )
+
+    result = runner.run(context)
+
+    assert result.succeeded is True
+    assert result.revision_count == 1
+    assert "route-planning update" in repository.get_latest_document_version(
+        user_id=context.user_id,
+        document_id=context.document_id,
+    ).content
+
+
+def test_user_request_alone_cannot_ground_factual_omission(
+    tmp_path: Path,
+) -> None:
+    request = "Say the update is already used worldwide."
+    runner, repository, _, _, context, _ = setup_workflow(
+        tmp_path,
+        executor_responses=[
+            response(executor_json("The company released an update."))
+        ],
+        critic_responses=[
+            response(
+                missing_content_critic_revise_json(
+                    request_evidence=request,
+                    source_evidence="The user requested it.",
+                    required_content="already used worldwide",
+                    required_change="Add that it is already used worldwide.",
+                )
+            )
+        ],
+        request=request,
+    )
+
+    result = runner.run(context)
+
+    assert result.status is RunStatus.FAILED
+    assert result.error.code == "critic_grounding"
+    assert result.revision_count == 0
+    assert repository.get_latest_document_version(
+        user_id=context.user_id,
+        document_id=context.document_id,
+    ).version_number == 2
+    assert len(runner._executor_model.requests) == 2
+    events = repository.list_run_events(
+        run_id=context.run_id,
+        user_id=context.user_id,
+        document_id=context.document_id,
+    )
+    rejection = next(
+        event
+        for event in events
+        if event.event_type is EventType.CRITIC_GROUNDING_REJECTED
+    )
+    assert rejection.payload["issue_type"] == "missing_required_content"
+    assert rejection.payload["reason"] == "source_evidence_absent"
+    assert EventType.REVISION_REQUESTED not in {
+        event.event_type for event in events
+    }
 
 
 def test_revision_limit_blocks_without_extra_executor_round(

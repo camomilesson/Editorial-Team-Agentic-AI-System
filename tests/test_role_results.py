@@ -159,6 +159,9 @@ def test_critic_omission_issue_does_not_require_draft_excerpt() -> None:
                         "summary": "A supported license detail is missing.",
                         "source_evidence": "The source specifies Apache 2.0.",
                         "required_change": "Mention the Apache 2.0 license.",
+                        "request_evidence": "Mention the license.",
+                        "required_content": "Apache 2.0 license",
+                        "rule_compatibility": "supported",
                     }
                 ],
                 "summary": "One supported omission requires revision.",
@@ -168,6 +171,9 @@ def test_critic_omission_issue_does_not_require_draft_excerpt() -> None:
 
     assert outcome.revision is not None
     assert outcome.result["issues"][0]["draft_excerpt"] is None
+    assert outcome.revision.required_changes == (
+        "Add the source-backed content: Apache 2.0 license",
+    )
 
 
 def test_critic_revision_without_issues_is_rejected() -> None:

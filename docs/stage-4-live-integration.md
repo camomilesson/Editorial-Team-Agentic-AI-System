@@ -153,6 +153,15 @@ before revision accounting, gives each scenario its own source, requires
 independent Critic comment retrieval when the Executor consulted comments, and
 maps failures to their actual property.
 
+A later unsupported-claim live run exposed one remaining path:
+`missing_required_content` could still treat unsupported user-request text as
+mandatory. Missing-content issues now require exact source evidence, exact
+source-backed required content, request evidence, and an explicit supported
+rule-compatibility declaration. Trusted validation checks all references
+before revision accounting and sends only the validated source-backed content
+to the Executor. Operating rules take precedence over source evidence, which
+takes precedence over compatible parts of the request.
+
 Completed-run evidence now includes the original source plus all run-created
 versions in deterministic order. `critic_review_completed` records every valid
 review, and acceptance creates a Critic-to-Orchestrator handoff. Migration 003
@@ -181,7 +190,14 @@ The pre-repair live baseline on 2026-07-27 showed `basic` and
 failed because its fixture was internally irrelevant even though retrieval,
 trust, and canary assertions passed.
 
-Repaired behavior is not claimed live until the affected scenarios are rerun.
-The required rerun order is `memory`, `unsupported-claim`, then
-`shared-comments`, each with deterministic approval. Offline regression tests
-must not be confused with provider observations.
+After the first repair, `memory` and `shared-comments` passed live, while
+`unsupported-claim` still oscillated because of invalid missing-content
+feedback. Its acceptable outcomes remain: immediate Critic acceptance when
+the Executor correctly omits the unsupported request, or one grounded removal
+revision if the Executor initially includes it. Invalid requests to add
+unsupported content, revision-limit oscillation, blocked valid drafts, and
+approved unsupported claims are failures.
+
+The final missing-content repair is not claimed live until
+`unsupported-claim --approval approve` is rerun. Offline regression tests must
+not be confused with provider observations.

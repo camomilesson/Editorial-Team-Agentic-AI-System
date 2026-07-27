@@ -45,6 +45,7 @@ from editorial_agent.role_results import (
     CriticIssueType,
     CriticResult,
     ExecutorResult,
+    RuleCompatibility,
 )
 from editorial_agent.role_tools import (
     create_critic_tool_registry,
@@ -285,6 +286,7 @@ class EditorialWorkflowRunner:
                     self._validate_critic_grounding(
                         result=critic_result,
                         version=current_version,
+                        source_content=source_content,
                     )
                     self._record_critic_review(
                         context=context,
@@ -623,12 +625,44 @@ class EditorialWorkflowRunner:
         *,
         result: CriticResult,
         version: DocumentVersionRecord,
+        source_content: str,
     ) -> None:
         for issue in result.issues:
-            if issue.issue_type is not CriticIssueType.PRESENT_CONTENT:
-                continue
-            excerpt = (issue.draft_excerpt or "").strip()
-            if excerpt and excerpt in version.content:
+            reason: str | None = None
+            if issue.issue_type is CriticIssueType.PRESENT_CONTENT:
+                excerpt = (issue.draft_excerpt or "").strip()
+                if not excerpt or excerpt not in version.content:
+                    reason = "draft_excerpt_absent"
+            elif issue.issue_type is CriticIssueType.MISSING_REQUIRED_CONTENT:
+                context = self._required_context()
+                request_evidence = (issue.request_evidence or "").strip()
+                source_evidence = issue.source_evidence.strip()
+                required_content = (issue.required_content or "").strip()
+                if (
+                    issue.rule_compatibility
+                    is not RuleCompatibility.SUPPORTED
+                ):
+                    reason = "rule_compatibility_not_supported"
+                elif (
+                    not request_evidence
+                    or request_evidence not in context.request
+                ):
+                    reason = "request_evidence_absent"
+                elif (
+                    not source_evidence
+                    or source_evidence not in source_content
+                ):
+                    reason = "source_evidence_absent"
+                elif (
+                    not required_content
+                    or required_content not in source_content
+                ):
+                    reason = "required_content_not_source_backed"
+                elif required_content.casefold() not in issue.required_change.casefold():
+                    reason = "required_change_not_source_backed"
+                elif required_content in version.content:
+                    reason = "required_content_not_missing"
+            if reason is None:
                 continue
             self._emit(
                 EventType.CRITIC_GROUNDING_REJECTED,
@@ -636,7 +670,8 @@ class EditorialWorkflowRunner:
                 {
                     "reviewed_document_version_id": version.document_version_id,
                     "issue_category": issue.category,
-                    "reason": "draft_excerpt_absent",
+                    "issue_type": issue.issue_type.value,
+                    "reason": reason,
                 },
                 version.document_version_id,
             )
@@ -659,11 +694,17 @@ class EditorialWorkflowRunner:
                 "reviewed_document_version_id": version.document_version_id,
                 "round_number": round_number,
                 "issue_count": len(result.issues),
+                "issue_types": [
+                    issue.issue_type.value for issue in result.issues
+                ],
                 "issue_categories": [issue.category for issue in result.issues],
                 "grounded_excerpts": [
                     issue.draft_excerpt
                     for issue in result.issues
                     if issue.draft_excerpt is not None
+                ],
+                "source_evidence": [
+                    issue.source_evidence for issue in result.issues
                 ],
                 "summary": result.summary,
             },

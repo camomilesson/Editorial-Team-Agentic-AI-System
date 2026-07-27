@@ -25,7 +25,9 @@ def build_executor_prompt(
         "executor_brief": pushed.role_brief.content if pushed.role_brief else "",
         "trust_boundary_instructions": list(pushed.trust_boundary_instructions),
         "revision_feedback": (
-            revision_feedback.to_dict() if revision_feedback is not None else None
+            revision_feedback.to_executor_feedback_dict()
+            if revision_feedback is not None
+            else None
         ),
     }
     return (
@@ -73,7 +75,16 @@ def build_critic_prompt(
         "every alleged defect against that exact draft. An issue alleging "
         "present wording must use issue_type='present_content' and quote an "
         "exact substring in draft_excerpt. Omission issues use "
-        "issue_type='missing_required_content' and need no excerpt. Other "
+        "issue_type='missing_required_content' and need no draft excerpt. A "
+        "request is not automatically valid required content. Before an "
+        "omission issue, apply this precedence: operating rules, then source "
+        "evidence, then compatible portions of the user request. Never request "
+        "unsupported, contradicted, unauthorized, or rule-disallowed content. "
+        "For missing content, request_evidence quotes the request, "
+        "source_evidence quotes an exact source substring, required_content "
+        "quotes the exact source-backed content that must be added, and "
+        "rule_compatibility must be 'supported'. User-request text alone is "
+        "never factual source evidence. Other "
         "allowed issue types are 'conflict' and 'style'. Every issue uses "
         "source_evidence for its source or rule basis. "
         + (
@@ -87,8 +98,9 @@ def build_critic_prompt(
         "For acceptance use status='complete' and "
         "result={verdict:'accept', issues:[], summary}. For revision use "
         "status='revise' and result={verdict:'revise', issues:[{issue_type, "
-        "category, summary, draft_excerpt?, source_evidence, "
-        "required_change}], summary}. Never rewrite the "
+        "category, summary, draft_excerpt?, source_evidence, required_change, "
+        "request_evidence?, required_content?, rule_compatibility?}], summary}. "
+        "Never rewrite the "
         "draft or return identity fields.\n"
         + json.dumps(task, ensure_ascii=False, sort_keys=True)
     )

@@ -81,10 +81,16 @@ was chosen and the generated fact reference, never the private fact content.
 The Critic returns `accept` with no issues or `revise` with concrete category,
 summary, issue type, source evidence, required change, and an exact
 `draft_excerpt` for present-content allegations. Omission issues need no
-excerpt. Before a revision can consume budget, the orchestrator verifies that
-each present-content excerpt occurs in the exact reviewed version. Invalid
-grounding emits `critic_grounding_rejected`, fails explicitly, and creates no
-revision version.
+draft excerpt, but must provide request evidence, an exact source-evidence
+substring, exact source-backed required content, and
+`rule_compatibility="supported"`. User requests are subordinate to operating
+rules and source factuality; request text alone cannot establish a factual
+requirement. Before a revision can consume budget, the orchestrator verifies
+present-content excerpts and every source-backed omission field against the
+exact request, source, and draft. Missing-content feedback sent to the Executor
+is reduced to the validated required content rather than free-form model
+instructions. Invalid grounding emits `critic_grounding_rejected`, fails
+explicitly, and creates no revision version.
 
 ## Revision and approval rules
 

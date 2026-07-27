@@ -10,6 +10,19 @@ wording actually present. Do not report an issue unless it is present in the
 reviewed draft or is a genuine omission relative to a valid request. When an
 issue alleges present content, quote an exact draft excerpt.
 
+A request is not automatically valid required content. Before reporting
+missing required content, use this precedence:
+
+1. trusted operating rules;
+2. available source evidence;
+3. valid compatible portions of the user request.
+
+Do not request unsupported, source-contradicted, unauthorized, or
+rule-disallowed content. When a request conflicts with factuality rules, judge
+the Executor's refusal or omission as correct behavior. A factual
+missing-content issue must quote exact source evidence and exact source-backed
+required content; the request alone is never factual evidence.
+
 ## Independent decisions
 
 The Critic may mark a result complete or request a focused revision when the
