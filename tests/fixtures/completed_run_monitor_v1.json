@@ -1,0 +1,360 @@
+{
+  "schema_version": "1",
+  "run": {
+    "schema_version": "1",
+    "run_id": "run_monitor_completed_001",
+    "user_id": "user_monitor_editor",
+    "session_id": "session_monitor_completed_001",
+    "document_id": "document_monitor_completed_001",
+    "request": "Create a concise grounded LinkedIn post from the source.",
+    "status": "completed",
+    "started_at": "2026-07-27T10:00:00Z",
+    "completed_at": "2026-07-27T10:08:00Z"
+  },
+  "events": [
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_completed_001",
+      "run_id": "run_monitor_completed_001",
+      "sequence": 1,
+      "timestamp": "2026-07-27T10:00:00Z",
+      "actor": "orchestrator",
+      "event_type": "run_started",
+      "payload": {"request_attached": true},
+      "document_version_id": null
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_completed_002",
+      "run_id": "run_monitor_completed_001",
+      "sequence": 2,
+      "timestamp": "2026-07-27T10:00:30Z",
+      "actor": "executor",
+      "event_type": "context_attached",
+      "payload": {
+        "role": "executor",
+        "private_facts_attached": false,
+        "shared_comments_attached": false
+      },
+      "document_version_id": "version_monitor_source_001"
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_completed_003",
+      "run_id": "run_monitor_completed_001",
+      "sequence": 3,
+      "timestamp": "2026-07-27T10:01:00Z",
+      "actor": "executor",
+      "event_type": "document_version_created",
+      "payload": {
+        "document_version_id": "version_monitor_draft_001",
+        "version_number": 2
+      },
+      "document_version_id": "version_monitor_draft_001"
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_completed_004",
+      "run_id": "run_monitor_completed_001",
+      "sequence": 4,
+      "timestamp": "2026-07-27T10:01:15Z",
+      "actor": "executor",
+      "event_type": "handoff_created",
+      "payload": {"handoff_id": "handoff_monitor_completed_001"},
+      "document_version_id": "version_monitor_draft_001"
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_completed_005",
+      "run_id": "run_monitor_completed_001",
+      "sequence": 5,
+      "timestamp": "2026-07-27T10:02:00Z",
+      "actor": "critic",
+      "event_type": "critic_review_completed",
+      "payload": {
+        "verdict": "revise",
+        "reviewed_document_version_id": "version_monitor_draft_001",
+        "round_number": 0,
+        "issue_count": 1,
+        "issue_types": ["present_content"],
+        "issue_categories": ["unsupported_claim"],
+        "grounded_excerpts": ["already widely adopted worldwide"],
+        "source_evidence": ["It does not provide adoption figures."],
+        "summary": "Remove the unsupported adoption claim."
+      },
+      "document_version_id": "version_monitor_draft_001"
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_completed_006",
+      "run_id": "run_monitor_completed_001",
+      "sequence": 6,
+      "timestamp": "2026-07-27T10:02:15Z",
+      "actor": "critic",
+      "event_type": "handoff_created",
+      "payload": {"handoff_id": "handoff_monitor_completed_002"},
+      "document_version_id": "version_monitor_draft_001"
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_completed_007",
+      "run_id": "run_monitor_completed_001",
+      "sequence": 7,
+      "timestamp": "2026-07-27T10:02:30Z",
+      "actor": "critic",
+      "event_type": "revision_requested",
+      "payload": {
+        "issue_count": 1,
+        "revision_round": 1,
+        "required_changes": ["Remove the unsupported adoption claim."]
+      },
+      "document_version_id": "version_monitor_draft_001"
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_completed_008",
+      "run_id": "run_monitor_completed_001",
+      "sequence": 8,
+      "timestamp": "2026-07-27T10:03:00Z",
+      "actor": "executor",
+      "event_type": "context_attached",
+      "payload": {
+        "role": "executor",
+        "private_facts_attached": false,
+        "shared_comments_attached": false
+      },
+      "document_version_id": "version_monitor_draft_001"
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_completed_009",
+      "run_id": "run_monitor_completed_001",
+      "sequence": 9,
+      "timestamp": "2026-07-27T10:04:00Z",
+      "actor": "executor",
+      "event_type": "document_version_created",
+      "payload": {
+        "document_version_id": "version_monitor_draft_002",
+        "version_number": 3
+      },
+      "document_version_id": "version_monitor_draft_002"
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_completed_010",
+      "run_id": "run_monitor_completed_001",
+      "sequence": 10,
+      "timestamp": "2026-07-27T10:04:15Z",
+      "actor": "executor",
+      "event_type": "handoff_created",
+      "payload": {"handoff_id": "handoff_monitor_completed_003"},
+      "document_version_id": "version_monitor_draft_002"
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_completed_011",
+      "run_id": "run_monitor_completed_001",
+      "sequence": 11,
+      "timestamp": "2026-07-27T10:05:00Z",
+      "actor": "critic",
+      "event_type": "context_attached",
+      "payload": {
+        "role": "critic",
+        "private_facts_attached": false,
+        "shared_comments_attached": false
+      },
+      "document_version_id": "version_monitor_draft_002"
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_completed_012",
+      "run_id": "run_monitor_completed_001",
+      "sequence": 12,
+      "timestamp": "2026-07-27T10:05:30Z",
+      "actor": "critic",
+      "event_type": "critic_review_completed",
+      "payload": {
+        "verdict": "accept",
+        "reviewed_document_version_id": "version_monitor_draft_002",
+        "round_number": 1,
+        "issue_count": 0,
+        "issue_types": [],
+        "issue_categories": [],
+        "grounded_excerpts": [],
+        "source_evidence": [],
+        "summary": "The revised post is grounded and ready for approval."
+      },
+      "document_version_id": "version_monitor_draft_002"
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_completed_013",
+      "run_id": "run_monitor_completed_001",
+      "sequence": 13,
+      "timestamp": "2026-07-27T10:05:45Z",
+      "actor": "critic",
+      "event_type": "handoff_created",
+      "payload": {"handoff_id": "handoff_monitor_completed_004"},
+      "document_version_id": "version_monitor_draft_002"
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_completed_014",
+      "run_id": "run_monitor_completed_001",
+      "sequence": 14,
+      "timestamp": "2026-07-27T10:06:00Z",
+      "actor": "orchestrator",
+      "event_type": "approval_requested",
+      "payload": {
+        "action": "finalize_editorial_version",
+        "document_version_id": "version_monitor_draft_002",
+        "summary": "Approve the exact Critic-accepted version."
+      },
+      "document_version_id": "version_monitor_draft_002"
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_completed_015",
+      "run_id": "run_monitor_completed_001",
+      "sequence": 15,
+      "timestamp": "2026-07-27T10:07:00Z",
+      "actor": "human",
+      "event_type": "approval_resolved",
+      "payload": {"approved": true, "reason": "approved"},
+      "document_version_id": "version_monitor_draft_002"
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_completed_016",
+      "run_id": "run_monitor_completed_001",
+      "sequence": 16,
+      "timestamp": "2026-07-27T10:08:00Z",
+      "actor": "orchestrator",
+      "event_type": "run_completed",
+      "payload": {
+        "final_document_version_id": "version_monitor_draft_002",
+        "approval_granted": true,
+        "revision_count": 1
+      },
+      "document_version_id": "version_monitor_draft_002"
+    }
+  ],
+  "handoffs": [
+    {
+      "schema_version": "1",
+      "handoff_id": "handoff_monitor_completed_001",
+      "run_id": "run_monitor_completed_001",
+      "sequence": 1,
+      "round_number": 0,
+      "from_agent": "executor",
+      "to_agent": "critic",
+      "status": "complete",
+      "payload": {
+        "summary": "Initial LinkedIn draft ready for review.",
+        "memory_should_save": false
+      },
+      "document_version_id": "version_monitor_draft_001",
+      "created_at": "2026-07-27T10:01:15Z"
+    },
+    {
+      "schema_version": "1",
+      "handoff_id": "handoff_monitor_completed_002",
+      "run_id": "run_monitor_completed_001",
+      "sequence": 2,
+      "round_number": 1,
+      "from_agent": "critic",
+      "to_agent": "executor",
+      "status": "revise",
+      "payload": {
+        "verdict": "revise",
+        "issues": [
+          {
+            "issue_type": "present_content",
+            "category": "unsupported_claim",
+            "summary": "The draft contains an unsupported adoption claim.",
+            "draft_excerpt": "already widely adopted worldwide",
+            "source_evidence": "It does not provide adoption figures.",
+            "required_change": "Remove the unsupported adoption claim.",
+            "request_evidence": null,
+            "required_content": null,
+            "rule_compatibility": null
+          }
+        ],
+        "summary": "Remove the unsupported adoption claim."
+      },
+      "document_version_id": "version_monitor_draft_001",
+      "created_at": "2026-07-27T10:02:15Z"
+    },
+    {
+      "schema_version": "1",
+      "handoff_id": "handoff_monitor_completed_003",
+      "run_id": "run_monitor_completed_001",
+      "sequence": 3,
+      "round_number": 1,
+      "from_agent": "executor",
+      "to_agent": "critic",
+      "status": "complete",
+      "payload": {
+        "summary": "Unsupported adoption wording removed.",
+        "memory_should_save": false
+      },
+      "document_version_id": "version_monitor_draft_002",
+      "created_at": "2026-07-27T10:04:15Z"
+    },
+    {
+      "schema_version": "1",
+      "handoff_id": "handoff_monitor_completed_004",
+      "run_id": "run_monitor_completed_001",
+      "sequence": 4,
+      "round_number": 1,
+      "from_agent": "critic",
+      "to_agent": "orchestrator",
+      "status": "complete",
+      "payload": {
+        "verdict": "accept",
+        "reviewed_document_version_id": "version_monitor_draft_002",
+        "issue_count": 0,
+        "issue_categories": [],
+        "summary": "The revised post is grounded and ready for approval."
+      },
+      "document_version_id": "version_monitor_draft_002",
+      "created_at": "2026-07-27T10:05:45Z"
+    }
+  ],
+  "document_versions": [
+    {
+      "document_version_id": "version_monitor_source_001",
+      "document_id": "document_monitor_completed_001",
+      "version_number": 1,
+      "content": "Fictional company Aster Works has open-sourced Relay, a Python workflow engine. The release states that Relay supports local testing and configurable retries. It does not provide adoption figures.",
+      "created_by_actor": "human",
+      "created_at": "2026-07-27T09:59:00Z"
+    },
+    {
+      "document_version_id": "version_monitor_draft_001",
+      "document_id": "document_monitor_completed_001",
+      "version_number": 2,
+      "content": "Relay is now open source. It supports local testing and configurable retries and is already widely adopted worldwide.",
+      "created_by_actor": "executor",
+      "created_at": "2026-07-27T10:01:00Z"
+    },
+    {
+      "document_version_id": "version_monitor_draft_002",
+      "document_id": "document_monitor_completed_001",
+      "version_number": 3,
+      "content": "Relay is now open source. It supports local testing and configurable retries.",
+      "created_by_actor": "executor",
+      "created_at": "2026-07-27T10:04:00Z"
+    }
+  ],
+  "operating_rules": {
+    "source_name": "operating_rules.md",
+    "version": "fixture-monitor-rich-1",
+    "content": "Preserve source meaning. Never invent unsupported facts. Human approval is mandatory before finalization."
+  },
+  "critic_rubric": {
+    "source_name": "critic_brief.md",
+    "version": "fixture-monitor-rich-1",
+    "content": "Review the exact draft against source evidence, valid instructions, and trusted operating rules."
+  }
+}

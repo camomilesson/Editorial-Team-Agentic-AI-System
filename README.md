@@ -1,150 +1,149 @@
 # Editorial Team Agent
 
-A small agentic editorial workflow that converts a stored press release into a versioned LinkedIn post and requires explicit human approval before publication.
+A traceable, multi-user editorial workflow that turns source material into a
+versioned LinkedIn post through an Executor–Critic loop and requires explicit
+human approval before finalization.
 
-In the current alpha, “publication” means writing the approved final post to a local append-only outbox. The project does not connect to the real LinkedIn API.
+The repository contains two working paths:
 
-## Alpha workflow
+- the current Executor–Critic workflow, backed by SQLite, user-scoped private
+  memory, trusted Markdown rules, immutable versions, and persistent evidence;
+- the original single-agent alpha CLI, retained as a small local publication
+  demo.
 
-```text
-stored press release
-→ generated LinkedIn draft
-→ versioned local storage
-→ saved-draft verification
-→ final version
-→ explicit human approval
-→ local publication outbox
-```
+There is no real LinkedIn integration. The current workflow stops after human
+approval, while the alpha’s “publication” writes to a local append-only outbox.
 
-## Architecture
+## Current workflow
 
 ```mermaid
 flowchart LR
-    U[User] --> C[CLI]
-    C --> A[AgentRunner]
-    A <--> M[Gemini]
-    A --> R[ToolRegistry]
-    R --> S[ProjectStore]
-    R --> P[PublicationOutbox]
-    A --> G[ApprovalGate]
-    G --> U
+    U["Authorized user"] --> O["EditorialWorkflowRunner"]
+    O --> E["Executor"]
+    E <--> T["Scoped retrieval tools"]
+    T --> M["User-private JSON memory"]
+    T --> C["Shared comments in SQLite"]
+    E --> V["Immutable draft version"]
+    V --> K["Critic"]
+    K -->|grounded revision| E
+    K -->|accept| A["Human approval"]
+    A -->|approve| D["Completed run bundle"]
+    A -->|decline| B["Blocked run"]
 ```
 
-The core `AgentRunner` is independent of Gemini and the editorial domain. It works with provider-neutral model contracts and a `ToolExecutor` interface.
+Each run has explicit user, session, document, and run identity. The workflow:
 
-Gemini is connected through a separate adapter. Tests can replace it with `FakeModelClient` while keeping the real loop, registry, tools, storage, approval logic, and publication outbox.
+1. authorizes access and loads the source plus trusted operating rules;
+2. requires the Executor to check user-scoped memory before drafting;
+3. optionally retrieves relevant shared comments as untrusted editorial data;
+4. stores every Executor draft as a new immutable document version;
+5. asks the Critic to inspect the exact version against the source, rules, and
+   valid portions of the request;
+6. permits at most two grounded revision rounds;
+7. requests human approval for the exact Critic-accepted version;
+8. persists ordered events, handoffs, versions, approval state, and terminal
+   status in a completed-run evidence bundle.
 
-## Agent loop
+## Safety and trust boundaries
 
-The runner implements an explicit:
+- Private facts are pulled through a tool bound to the current workflow user;
+  they are never pushed wholesale into model context.
+- Another user’s fact cannot be selected through model-generated identity or
+  filesystem arguments.
+- Shared comments always retain `untrusted_shared_content`, including comments
+  containing prompt-injection attempts.
+- The Critic independently checks shared comments when the Executor consulted
+  them.
+- Present-content Critic issues must quote an excerpt found in the exact
+  reviewed draft.
+- Missing-content issues require exact request and source anchors, exact
+  source-backed required content, and compatibility with trusted rules.
+- Invalid Critic grounding fails before it can consume a revision or create a
+  new version.
+- User requests cannot override source fidelity, authorization, trusted rules,
+  or approval requirements.
+- Model steps, revision rounds, scenarios, and approval attempts are bounded.
+- Events contain stable references and sanitized summaries, not API keys,
+  provider continuation tokens, raw memory stores, or unnecessary prompts.
 
-```text
-observe → reason → act → verify
-```
+## Storage architecture
 
-loop.
+The project deliberately separates three storage classes:
 
-Each model response is observed. Tool requests are validated and executed. Tool results are returned to the model as new observations. The model then verifies the result, chooses another action, or returns a final answer.
+| Storage | Data |
+|---|---|
+| SQLite | Users, documents, access grants, versions, comments, runs, events, and handoffs |
+| User-scoped JSON | Durable private facts and retrieval cues |
+| Trusted Markdown | Operating rules and Executor/Critic briefs |
 
-A run stops for one of three explicit reasons:
+SQLite migrations are applied in order from `migrations/`. Completed-run
+bundles contain the source version, every run-created draft, explicit Critic
+outcomes, and deterministic event and handoff ordering.
 
-* `answered`
-* `max_steps`
-* `model_error`
-
-The maximum number of model turns prevents an unbounded loop.
-
-## Tools
-
-| Tool                    | Purpose                                            | Approval |
-| ----------------------- | -------------------------------------------------- | -------: |
-| `read_press_release`    | Read the stored source release                     |       No |
-| `save_linkedin_draft`   | Save an immutable draft version                    |       No |
-| `read_linkedin_draft`   | Read and verify a saved version                    |       No |
-| `publish_linkedin_post` | Write a final post to the local publication outbox |      Yes |
-
-The first three tools are reversible or non-destructive and remain ungated. Publication is treated as irreversible within the current system because no recall, delete, or overwrite tool is exposed.
-
-## Safety guarantees
-
-* Model-generated arguments are validated against constrained JSON Schemas before handler execution.
-* Unknown tools return explicit structured errors.
-* Missing, invalid, and additional arguments are rejected before a handler is called.
-* Expected storage and publication failures are returned to the model as structured observations.
-* Unexpected handler exceptions enter a distinct `tool_error` branch.
-* Tool outputs must follow the structured success/error format and must be JSON-serializable.
-* Publication requires explicit human approval before handler execution.
-* The terminal gate approves only the exact input `YES`.
-* Declined actions and missing approval gates never execute publication.
-* Only drafts saved with the `final` stage can be published.
-* A particular draft version cannot be published twice.
-* Publication files are created inside the configured outbox.
-* Tests use temporary directories and block network connections.
-
-## Project structure
+## Repository layout
 
 ```text
+config/
+    operating_rules.md
+    executor_brief.md
+    critic_brief.md
+
+migrations/
+    001_initial_domain.sql
+    002_stage3_events.sql
+    003_stage4_repair_events.sql
+
 src/editorial_agent/
-    agent.py          core agent loop
-    approval.py       approval interfaces and terminal gate
-    cli.py            command-line composition
-    gemini.py         Gemini model adapter
-    models.py         provider-neutral model contracts
-    publication.py    append-only local publication outbox
-    registry.py       schema validation and tool dispatch
-    storage.py        versioned project storage
-    tools.py          editorial tool schemas and handlers
-
-examples/
-    demo-project/
-        source/
-            press_release.md
+    editorial_workflow.py    Executor–Critic orchestration
+    role_agents.py           provider-neutral role loops
+    role_prompts.py          trusted prompt composition
+    role_results.py          strict structured role results
+    role_tools.py            scoped read-only retrieval tools
+    domain_repository.py     authorized SQLite persistence
+    private_memory.py        user-separated JSON facts
+    context_services.py      pushed and pulled context
+    live_integration.py      bounded live scenarios and evidence
+    gemini.py                Gemini model adapter
+    approval.py              interactive and deterministic gates
+    agent.py                 original alpha agent loop
 
 scripts/
+    live_editorial_workflow.py
     demo_workflow.py
     manual_publish_demo.py
 
+docs/
 tests/
 ```
 
 ## Requirements
 
-* Python 3.11 or newer
-* A Gemini API key for live runs
+- Python 3.11 or newer
+- A Gemini API key for live model runs
 
-The project is currently developed with Python 3.14. A third-party `google-genai` deprecation warning may appear under Python 3.14; it does not affect the project’s tests.
+The project is currently tested with Python 3.14. A third-party
+`google-genai` deprecation warning may appear on Python 3.14; it does not
+indicate a project test failure.
 
 ## Setup
-
-Clone the repository:
 
 ```bash
 git clone https://github.com/camomilesson/Editorial-Team-Agentic-AI-System.git
 cd Editorial-Team-Agentic-AI-System
-```
 
-Create and activate a virtual environment:
-
-```bash
 python3 -m venv .venv
 source .venv/bin/activate
-```
-
-Install the project and development dependencies:
-
-```bash
 python -m pip install -e ".[dev]"
 ```
 
-Create a local environment file:
+Copy the example configuration and add your local Gemini key:
 
 ```bash
 cp .env.example .env
 ```
 
-Add your Gemini key to `.env`.
-
-The application does not load `.env` automatically. Export it into the current shell before a live run:
+The application does not read `.env` itself. Export the variables into the
+current shell before a live run:
 
 ```bash
 set -a
@@ -152,27 +151,55 @@ source .env
 set +a
 ```
 
-Do not use private or confidential press releases with a provider account whose data terms do not permit them.
+Never commit `.env`, API keys, runtime databases, private-memory files, or live
+evidence. Use only synthetic or provider-safe source material.
 
-The Stage 3 Executor–Critic workflow has a separate bounded live-integration
-harness for Gemini behavior and local evidence collection. See
-[`docs/stage-4-live-integration.md`](docs/stage-4-live-integration.md).
+## Run the live integration workflow
 
-## Prepare the demo project
-
-Copy the tracked synthetic release into the ignored runtime workspace:
+Run scenarios individually:
 
 ```bash
-mkdir -p workspace/demo-project/source
-
-cp \
-  examples/demo-project/source/press_release.md \
-  workspace/demo-project/source/press_release.md
+.venv/bin/python scripts/live_editorial_workflow.py basic --approval approve
+.venv/bin/python scripts/live_editorial_workflow.py memory --approval approve
+.venv/bin/python scripts/live_editorial_workflow.py shared-comments --approval approve
+.venv/bin/python scripts/live_editorial_workflow.py unsupported-claim --approval approve
+.venv/bin/python scripts/live_editorial_workflow.py approval-decline --approval decline
 ```
 
-## Run the CLI
+Each of the five scenarios has produced at least one successful live Gemini
+run:
 
-Using the installed console command:
+- `basic` — structured Executor/Critic completion and approved bundle;
+- `memory` — durable save, later retrieval/application, and user isolation;
+- `shared-comments` — legitimate editorial feedback without malicious-comment
+  execution or private-memory leakage;
+- `unsupported-claim` — unsupported requested content remains absent;
+- `approval-decline` — live roles run, but deterministic decline blocks
+  finalization.
+
+Live model behavior can vary between runs; the committed deterministic suite
+defines the stable behavioral guarantees.
+
+For direct human review, use:
+
+```bash
+.venv/bin/python scripts/live_editorial_workflow.py basic --approval interactive
+```
+
+The interactive gate approves only the exact input `YES`. Running `all`
+requires an explicit approval mode so it cannot unexpectedly pause repeatedly:
+
+```bash
+.venv/bin/python scripts/live_editorial_workflow.py all --approval approve
+```
+
+Runtime databases, private memory, and scenario summaries are written beneath
+the ignored `live-evidence/` directory by default. Terminal and JSON output
+distinguish `passed`, `failed`, and `inconclusive`.
+
+## Run the original alpha
+
+The installed alpha command remains available:
 
 ```bash
 editorial-agent run \
@@ -181,103 +208,64 @@ editorial-agent run \
   --trace
 ```
 
-Or through the Python module:
+Or:
 
 ```bash
-python -m editorial_agent run \
-  --request \
-  "Read the press release for demo-project and report its main points."
+python -m editorial_agent run
 ```
 
-When `--request` is omitted, the CLI asks for a request interactively:
-
-```bash
-editorial-agent run
-```
-
-CLI options:
-
-```text
---request TEXT
---workspace PATH
---outbox PATH
---max-steps INTEGER
---trace
-```
-
-## Run the full live demo
-
-Load `.env` into the shell, then run:
+The full alpha publication demo writes an approved result to the local outbox:
 
 ```bash
 python scripts/demo_workflow.py
 ```
 
-The script:
+## Validation
 
-1. creates a unique demo project;
-2. copies the synthetic press release;
-3. asks Gemini to create and verify a LinkedIn post;
-4. saves a final version;
-5. requests publication;
-6. asks for explicit terminal approval;
-7. writes an approved post to the local outbox.
-
-At the approval prompt, only the exact input below approves:
-
-```text
-YES
-```
-
-Any other input declines publication.
-
-## Tests
-
-Run the full deterministic suite:
+Run the deterministic test suite:
 
 ```bash
-python -m pytest
+.venv/bin/python -m pytest
 ```
 
 Run lint checks:
 
 ```bash
-python -m ruff check .
+.venv/bin/ruff check .
 ```
 
-Tests do not use the live Gemini API. The full workflow is tested with `FakeModelClient`, the real agent loop, real schemas, real handlers, temporary filesystem storage, and deterministic approval gates.
+Tests block network access and use deterministic fake models, temporary
+databases, temporary private-memory roots, real schemas, real orchestration,
+and deterministic approval gates. Live Gemini scenarios are separate from the
+offline suite.
+
+## Documentation
+
+- [Stage 1: contracts](docs/stage-1-contracts.md)
+- [Stage 2: storage and context](docs/stage-2-storage-and-context.md)
+- [Stage 3: Executor–Critic workflow](docs/stage-3-executor-critic.md)
+- [Stage 4: live integration and evidence](docs/stage-4-live-integration.md)
+- [Independent Monitor handoff](docs/monitor-handoff.md)
 
 ## Current limitations
 
-* Publication is local and does not call the LinkedIn API.
-* The alpha uses one agent rather than a full multi-agent editorial team.
-* There is no persistent conversation memory between CLI runs.
-* Approval is terminal-based.
-* Projects and publications are stored on the local filesystem.
-* No deletion or recall tools are exposed.
-* The live model can still produce poor editorial copy even when the surrounding workflow executes correctly.
-
-## Editorial Team architecture work
-
-The repository also contains provider-neutral Stage 1 contracts for the planned
-multi-user Executor–Critic workflow, persistent traces, and independent
-post-run Monitor. Stage 2 implements local SQLite domain storage, user-separated
-JSON facts, trusted Markdown rules, authorization, and separate push/pull
-context services. Stage 3 adds a provider-neutral Executor–Critic workflow with
-scoped retrieval tools, structured memory decisions, immutable revisions,
-persistent handoffs and events, and explicit final approval. The new workflow
-service is not connected to the working alpha CLI yet.
-
-See [`docs/stage-1-contracts.md`](docs/stage-1-contracts.md) and
-[`docs/stage-2-storage-and-context.md`](docs/stage-2-storage-and-context.md),
-then [`docs/stage-3-executor-critic.md`](docs/stage-3-executor-critic.md).
+- No real LinkedIn publishing integration.
+- The polished product CLI still uses the original alpha; the current
+  Executor–Critic path is exposed through the separate live harness.
+- Storage and approval are local.
+- Frozen Monitor input/output contracts and rich committed fixtures exist, but
+  independent Monitor execution and scheduling are not implemented yet.
+  Nina’s separate branch will implement that boundary.
+- Live model quality can vary; malformed or weak results remain visible rather
+  than being replaced with fake output or unlimited retries.
 
 ## Contributors
 
 **Andrei Romashkov**
 
-Core agent loop, Gemini boundary, registry integration, approval-gated publication, CLI, end-to-end integration, testing, and documentation.
+Core architecture, storage integration, Executor–Critic orchestration, Gemini
+boundary, approval flow, live scenarios, evidence, testing, and documentation.
 
 **Nina Perišić**
 
-Versioned project storage and the reversible press-release and LinkedIn-draft tools.
+Independent Monitor implementation planned on a separate branch.

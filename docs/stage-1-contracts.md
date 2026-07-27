@@ -82,12 +82,18 @@ It validates ordering, run ownership, terminal state, and terminal event
 consistency without accessing live repositories, model providers, API keys, or
 private-memory storage.
 
-`tests/fixtures/completed_run_v1.json` is a sanitized provider-neutral fixture
-containing an initial Executor handoff, a Critic revision request, a revised
-Executor handoff, and workflow completion.
+`tests/fixtures/completed_run_v1.json` remains the sparse sanitized
+provider-neutral schema-v1 fixture. Rich schema-v1 examples with source
+content, explicit Critic outcomes, approval, and terminal evidence are
+available in `completed_run_monitor_v1.json` and
+`blocked_run_monitor_v1.json`. See
+[`monitor-handoff.md`](monitor-handoff.md) for compatibility and the frozen
+Monitor boundary.
 
-Monitor scheduling, verdict generation, LLM judgment, and report persistence
-are not implemented in Stage 1.
+Provider-neutral output contracts now name Monitor axes, judgments,
+expected/observed/reason/impact rationale, evidence-linked findings, and the
+run-level report. Monitor execution, scheduling, LLM judgment, and report
+persistence remain unimplemented.
 
 ## Stage 1 deferred implementation
 

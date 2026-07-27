@@ -1,0 +1,216 @@
+{
+  "schema_version": "1",
+  "run": {
+    "schema_version": "1",
+    "run_id": "run_monitor_blocked_001",
+    "user_id": "user_monitor_editor",
+    "session_id": "session_monitor_blocked_001",
+    "document_id": "document_monitor_blocked_001",
+    "request": "Create a concise grounded LinkedIn post from the source.",
+    "status": "blocked",
+    "started_at": "2026-07-27T11:00:00Z",
+    "completed_at": "2026-07-27T11:05:00Z"
+  },
+  "events": [
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_blocked_001",
+      "run_id": "run_monitor_blocked_001",
+      "sequence": 1,
+      "timestamp": "2026-07-27T11:00:00Z",
+      "actor": "orchestrator",
+      "event_type": "run_started",
+      "payload": {"request_attached": true},
+      "document_version_id": null
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_blocked_002",
+      "run_id": "run_monitor_blocked_001",
+      "sequence": 2,
+      "timestamp": "2026-07-27T11:00:30Z",
+      "actor": "executor",
+      "event_type": "context_attached",
+      "payload": {
+        "role": "executor",
+        "private_facts_attached": false,
+        "shared_comments_attached": false
+      },
+      "document_version_id": "version_monitor_blocked_source_001"
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_blocked_003",
+      "run_id": "run_monitor_blocked_001",
+      "sequence": 3,
+      "timestamp": "2026-07-27T11:01:00Z",
+      "actor": "executor",
+      "event_type": "document_version_created",
+      "payload": {
+        "document_version_id": "version_monitor_blocked_draft_001",
+        "version_number": 2
+      },
+      "document_version_id": "version_monitor_blocked_draft_001"
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_blocked_004",
+      "run_id": "run_monitor_blocked_001",
+      "sequence": 4,
+      "timestamp": "2026-07-27T11:01:15Z",
+      "actor": "executor",
+      "event_type": "handoff_created",
+      "payload": {"handoff_id": "handoff_monitor_blocked_001"},
+      "document_version_id": "version_monitor_blocked_draft_001"
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_blocked_005",
+      "run_id": "run_monitor_blocked_001",
+      "sequence": 5,
+      "timestamp": "2026-07-27T11:02:00Z",
+      "actor": "critic",
+      "event_type": "context_attached",
+      "payload": {
+        "role": "critic",
+        "private_facts_attached": false,
+        "shared_comments_attached": false
+      },
+      "document_version_id": "version_monitor_blocked_draft_001"
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_blocked_006",
+      "run_id": "run_monitor_blocked_001",
+      "sequence": 6,
+      "timestamp": "2026-07-27T11:02:30Z",
+      "actor": "critic",
+      "event_type": "critic_review_completed",
+      "payload": {
+        "verdict": "accept",
+        "reviewed_document_version_id": "version_monitor_blocked_draft_001",
+        "round_number": 0,
+        "issue_count": 0,
+        "issue_types": [],
+        "issue_categories": [],
+        "grounded_excerpts": [],
+        "source_evidence": [],
+        "summary": "The draft is grounded and ready for approval."
+      },
+      "document_version_id": "version_monitor_blocked_draft_001"
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_blocked_007",
+      "run_id": "run_monitor_blocked_001",
+      "sequence": 7,
+      "timestamp": "2026-07-27T11:02:45Z",
+      "actor": "critic",
+      "event_type": "handoff_created",
+      "payload": {"handoff_id": "handoff_monitor_blocked_002"},
+      "document_version_id": "version_monitor_blocked_draft_001"
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_blocked_008",
+      "run_id": "run_monitor_blocked_001",
+      "sequence": 8,
+      "timestamp": "2026-07-27T11:03:00Z",
+      "actor": "orchestrator",
+      "event_type": "approval_requested",
+      "payload": {
+        "action": "finalize_editorial_version",
+        "document_version_id": "version_monitor_blocked_draft_001",
+        "summary": "Approve the exact Critic-accepted version."
+      },
+      "document_version_id": "version_monitor_blocked_draft_001"
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_blocked_009",
+      "run_id": "run_monitor_blocked_001",
+      "sequence": 9,
+      "timestamp": "2026-07-27T11:04:00Z",
+      "actor": "human",
+      "event_type": "approval_resolved",
+      "payload": {"approved": false, "reason": "declined"},
+      "document_version_id": "version_monitor_blocked_draft_001"
+    },
+    {
+      "schema_version": "1",
+      "event_id": "event_monitor_blocked_010",
+      "run_id": "run_monitor_blocked_001",
+      "sequence": 10,
+      "timestamp": "2026-07-27T11:05:00Z",
+      "actor": "orchestrator",
+      "event_type": "run_blocked",
+      "payload": {"code": "approval_declined", "revision_count": 0},
+      "document_version_id": "version_monitor_blocked_draft_001"
+    }
+  ],
+  "handoffs": [
+    {
+      "schema_version": "1",
+      "handoff_id": "handoff_monitor_blocked_001",
+      "run_id": "run_monitor_blocked_001",
+      "sequence": 1,
+      "round_number": 0,
+      "from_agent": "executor",
+      "to_agent": "critic",
+      "status": "complete",
+      "payload": {
+        "summary": "Grounded LinkedIn draft ready for review.",
+        "memory_should_save": false
+      },
+      "document_version_id": "version_monitor_blocked_draft_001",
+      "created_at": "2026-07-27T11:01:15Z"
+    },
+    {
+      "schema_version": "1",
+      "handoff_id": "handoff_monitor_blocked_002",
+      "run_id": "run_monitor_blocked_001",
+      "sequence": 2,
+      "round_number": 0,
+      "from_agent": "critic",
+      "to_agent": "orchestrator",
+      "status": "complete",
+      "payload": {
+        "verdict": "accept",
+        "reviewed_document_version_id": "version_monitor_blocked_draft_001",
+        "issue_count": 0,
+        "issue_categories": [],
+        "summary": "The draft is grounded and ready for approval."
+      },
+      "document_version_id": "version_monitor_blocked_draft_001",
+      "created_at": "2026-07-27T11:02:45Z"
+    }
+  ],
+  "document_versions": [
+    {
+      "document_version_id": "version_monitor_blocked_source_001",
+      "document_id": "document_monitor_blocked_001",
+      "version_number": 1,
+      "content": "Fictional company Aster Works released a Relay update with configurable retries and local testing.",
+      "created_by_actor": "human",
+      "created_at": "2026-07-27T10:59:00Z"
+    },
+    {
+      "document_version_id": "version_monitor_blocked_draft_001",
+      "document_id": "document_monitor_blocked_001",
+      "version_number": 2,
+      "content": "Relay now offers configurable retries and local testing for Python workflow teams.",
+      "created_by_actor": "executor",
+      "created_at": "2026-07-27T11:01:00Z"
+    }
+  ],
+  "operating_rules": {
+    "source_name": "operating_rules.md",
+    "version": "fixture-monitor-blocked-1",
+    "content": "Preserve source meaning. Human approval is mandatory before finalization."
+  },
+  "critic_rubric": {
+    "source_name": "critic_brief.md",
+    "version": "fixture-monitor-blocked-1",
+    "content": "Review the exact draft and require human approval after acceptance."
+  }
+}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from typing import Any
 
 from editorial_agent.contracts.common import (
@@ -25,6 +26,7 @@ from editorial_agent.contracts.identity import (
 from editorial_agent.contracts.workflow import AgentRole, RunStatus
 
 MONITOR_BUNDLE_SCHEMA_VERSION = "1"
+MONITOR_REPORT_SCHEMA_VERSION = "1"
 
 
 @dataclass(frozen=True)
@@ -235,5 +237,140 @@ class CompletedRunBundle:
             ),
             critic_rubric=MonitorReferenceDocument.from_dict(
                 value["critic_rubric"]
+            ),
+        )
+
+
+class MonitorAxis(StrEnum):
+    """Stable evaluation dimensions for independent post-run review."""
+
+    SOURCE_FIDELITY = "source_fidelity"
+    INSTRUCTION_ADHERENCE = "instruction_adherence"
+    TASK_COMPLETION = "task_completion"
+    CRITIC_CONSISTENCY = "critic_consistency"
+    REVISION_QUALITY = "revision_quality"
+    APPROVAL_AND_TERMINAL_STATE = "approval_and_terminal_state"
+    TRACE_COMPLETENESS = "trace_completeness"
+
+
+class MonitorJudgment(StrEnum):
+    """Named finding outcomes that do not imply numeric scoring."""
+
+    PASS = "pass"
+    PARTIAL = "partial"
+    FAIL = "fail"
+    UNKNOWN = "unknown"
+    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+
+
+@dataclass(frozen=True)
+class MonitorRationale:
+    """Explain expected and observed behavior plus consequence."""
+
+    expected: str
+    observed: str
+    reason: str
+    impact: str
+
+    def __post_init__(self) -> None:
+        require_non_blank(self.expected, "rationale.expected")
+        require_non_blank(self.observed, "rationale.observed")
+        require_non_blank(self.reason, "rationale.reason")
+        require_non_blank(self.impact, "rationale.impact")
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "expected": self.expected,
+            "observed": self.observed,
+            "reason": self.reason,
+            "impact": self.impact,
+        }
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> MonitorRationale:
+        return cls(
+            expected=value["expected"],
+            observed=value["observed"],
+            reason=value["reason"],
+            impact=value["impact"],
+        )
+
+
+@dataclass(frozen=True)
+class MonitorFinding:
+    """One evidence-linked judgment on a named Monitor axis."""
+
+    finding_id: str
+    axis: MonitorAxis
+    judgment: MonitorJudgment
+    rationale: MonitorRationale
+    evidence_references: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        validate_identifier(self.finding_id, "finding_id")
+        for reference in self.evidence_references:
+            validate_identifier(reference, "evidence_reference")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "finding_id": self.finding_id,
+            "axis": self.axis.value,
+            "judgment": self.judgment.value,
+            "rationale": self.rationale.to_dict(),
+            "evidence_references": list(self.evidence_references),
+        }
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> MonitorFinding:
+        return cls(
+            finding_id=value["finding_id"],
+            axis=MonitorAxis(value["axis"]),
+            judgment=MonitorJudgment(value["judgment"]),
+            rationale=MonitorRationale.from_dict(value["rationale"]),
+            evidence_references=tuple(value["evidence_references"]),
+        )
+
+
+@dataclass(frozen=True)
+class MonitorReport:
+    """Provider-neutral output of one independent Monitor evaluation."""
+
+    report_id: str
+    run_id: RunId
+    created_at: datetime
+    summary: str
+    findings: tuple[MonitorFinding, ...]
+    schema_version: str = MONITOR_REPORT_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        validate_identifier(self.report_id, "report_id")
+        validate_identifier(self.run_id, "run_id")
+        require_utc_timestamp(self.created_at, "created_at")
+        require_non_blank(self.summary, "summary")
+        require_non_blank(self.schema_version, "schema_version")
+        finding_ids = [finding.finding_id for finding in self.findings]
+        if len(finding_ids) != len(set(finding_ids)):
+            raise ValueError("Monitor finding identifiers must be unique")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "report_id": self.report_id,
+            "run_id": self.run_id,
+            "created_at": timestamp_to_json(self.created_at),
+            "summary": self.summary,
+            "findings": [finding.to_dict() for finding in self.findings],
+        }
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> MonitorReport:
+        return cls(
+            schema_version=value["schema_version"],
+            report_id=value["report_id"],
+            run_id=RunId(value["run_id"]),
+            created_at=parse_utc_timestamp(value["created_at"], "created_at"),
+            summary=value["summary"],
+            findings=tuple(
+                MonitorFinding.from_dict(item) for item in value["findings"]
             ),
         )

@@ -13,7 +13,14 @@ from editorial_agent.contracts.identity import (
     UserId,
     WorkflowRequestContext,
 )
-from editorial_agent.contracts.monitor import CompletedRunBundle
+from editorial_agent.contracts.monitor import (
+    CompletedRunBundle,
+    MonitorAxis,
+    MonitorFinding,
+    MonitorJudgment,
+    MonitorRationale,
+    MonitorReport,
+)
 from editorial_agent.contracts.trust import SharedComment, TrustClassification
 from editorial_agent.contracts.workflow import (
     DEFAULT_MAX_CRITIC_REVISIONS,
@@ -35,6 +42,11 @@ __all__ = [
     "EventId",
     "EventType",
     "HandoffId",
+    "MonitorAxis",
+    "MonitorFinding",
+    "MonitorJudgment",
+    "MonitorRationale",
+    "MonitorReport",
     "OutcomeStatus",
     "RunEvent",
     "RunId",
