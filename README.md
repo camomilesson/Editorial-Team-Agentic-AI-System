@@ -267,6 +267,19 @@ Runtime databases, private memory, and scenario summaries are written beneath
 the ignored `live-evidence/` directory by default. Terminal and JSON output
 distinguish `passed`, `failed`, and `inconclusive`.
 
+## Run the classroom demo
+
+Run the full Executor → Critic → approval → Monitor story with one command:
+
+```bash
+.venv/bin/python scripts/demo_stage5.py
+```
+
+The demo prints every real draft, review, decision, and Monitor finding, then
+saves a separate completed-run bundle and Monitor report. See the
+[classroom demo guide](docs/classroom-demo.md) for approval modes, evidence
+paths, narration, and safe failure behavior.
+
 ## Run the Independent Monitor
 
 The repository includes committed synthetic fixtures for a completed workflow,
@@ -357,7 +370,7 @@ Run the deterministic test suite:
 Current baseline:
 
 ```text
-275 passed, 1 third-party deprecation warning
+283 passed, 1 third-party deprecation warning
 ```
 
 Run lint checks:

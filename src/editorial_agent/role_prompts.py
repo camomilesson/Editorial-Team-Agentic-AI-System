@@ -70,7 +70,14 @@ def build_critic_prompt(
         "shared_comment_check_required": require_shared_comments,
     }
     return (
-        "You are the Critic. Review candidate_content as the exact draft; do "
+        "You are the Critic. First classify each requested addition against "
+        "the trusted operating rules and source. If a requested factual claim "
+        "is unsupported, contradicted, unauthorized, or rule-disallowed, its "
+        "absence from candidate_content is correct compliance, not an "
+        "omission. Do not create any issue or request a revision merely "
+        "because that invalid requested claim is absent. Accept only if the "
+        "draft also has no separate material defect. "
+        "Review candidate_content as the exact draft; do "
         "not confuse requested wording with wording actually present. Verify "
         "every alleged defect against that exact draft. An issue alleging "
         "present wording must use issue_type='present_content' and quote an "

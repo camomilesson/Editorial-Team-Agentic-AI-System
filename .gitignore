@@ -39,4 +39,5 @@ published/
 private-memory/
 run-logs/
 live-evidence/
+demo-evidence/
 *.tmp
